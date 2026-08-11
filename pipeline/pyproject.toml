@@ -1,0 +1,11 @@
+[project]
+name = "pipeline"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.5.2",
+    "pyproj>=3.7.2",
+    "pyshp>=3.1.6",
+    "rasterio>=1.5.1",
+    "shapely>=2.1.2",
+]

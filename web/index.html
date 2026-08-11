@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Canyon Finder — Scotland</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <aside id="controls">
+      <header>
+        <h1>Canyon Finder</h1>
+        <p class="sub">Steep watercourse reaches in Scotland</p>
+      </header>
+
+      <section class="controls">
+        <label class="range preset">
+          <span>Preset</span>
+          <select id="preset">
+            <option value="calibrated">Calibrated shortlist</option>
+            <option value="wide">Wide net — prospecting</option>
+            <option value="bigwater">Big water</option>
+            <option value="gorge">Tight gorge</option>
+            <option value="falls">Waterfall hunting</option>
+            <option value="small">Steep small burns</option>
+            <option value="long">Long descents</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+
+        <label class="range">
+          <span>Gradient</span>
+          <output id="gradOut">10–100%</output>
+          <div class="dual">
+            <input id="minGrad" type="range" min="2" max="60" step="1" value="10" />
+            <input id="maxGrad" type="range" min="5" max="100" step="5" value="100" />
+          </div>
+        </label>
+
+        <label class="range">
+          <span>Reach length</span>
+          <output id="lenOut">200–1200 m</output>
+          <div class="dual">
+            <input id="minLen" type="range" min="50" max="2000" step="25" value="200" />
+            <input id="maxLen" type="range" min="100" max="5000" step="100" value="1200" />
+          </div>
+        </label>
+
+        <label class="range">
+          <span>Upstream watercourse <em>(water volume proxy)</em></span>
+          <output id="catchOut">2 km +</output>
+          <div class="dual">
+            <input id="minCatch" type="range" min="0" max="50" step="0.5" value="2" />
+            <input id="maxCatch" type="range" min="1" max="100" step="1" value="100" />
+          </div>
+        </label>
+
+        <label class="range">
+          <span>Min valley confinement <em>(gorge sides at 100 m)</em></span>
+          <output id="confOut">0 m</output>
+          <input id="minConf" type="range" min="0" max="60" step="1" value="0" />
+        </label>
+
+        <label class="range">
+          <span>Min altitude at top</span>
+          <output id="altOut">0 m</output>
+          <input id="minAlt" type="range" min="0" max="800" step="10" value="0" />
+        </label>
+
+        <label class="range">
+          <span>Sort by</span>
+          <select id="sort">
+            <option value="promise">Promise</option>
+            <option value="drop">Total drop</option>
+            <option value="gradient">Gradient</option>
+            <option value="steepest">Steepest 100 m</option>
+            <option value="length">Length</option>
+            <option value="catchment">Catchment</option>
+            <option value="confine">Confinement</option>
+          </select>
+        </label>
+
+        <div class="row">
+          <label class="check"><input id="viewOnly" type="checkbox" /> Limit to map view</label>
+          <label class="check"><input id="hideLogged" type="checkbox" /> Hide logged</label>
+        </div>
+
+        <div class="row">
+          <label class="check"><input id="showKnown" type="checkbox" checked />
+            <span class="swatch"></span> Logged
+            <span class="swatch dud"></span> 0-star</label>
+          <select id="basemap">
+            <option value="topo">Basemap: topo</option>
+            <option value="sat">Basemap: satellite</option>
+          </select>
+        </div>
+      </section>
+
+      <footer>
+        <p>
+          <span class="promise">Promise</span> places a watercourse against the logged
+          canyons: 50 is the median logged descent, 0 is unremarkable water.
+        </p>
+        <p>
+          Line colour is reach gradient:
+          <span class="ramp"><i style="background:#8a4a12"></i><i style="background:#c26a1c"></i><i
+            style="background:#e8912b"></i><i style="background:#ffb54d"></i><i
+            style="background:#ffdc94"></i></span>
+          5% to 45%+. A white glow marks the selection.
+        </p>
+        <p>
+          Green is a graded or ungraded descent, grey is a "0 Stars" report — someone
+          walked in and found it not worth it. Both from
+          <a href="https://canyonlog.org/map/" target="_blank" rel="noreferrer">Canyon Log</a>,
+          snapped to the nearest watercourse.
+        </p>
+        <p>
+          Elevation: <span id="dem">OS Terrain 50</span> · Watercourses: OS Open Rivers
+          — Contains OS data © Crown copyright and database right 2026.
+        </p>
+      </footer>
+    </aside>
+
+    <main id="stage">
+      <div id="map"></div>
+      <div id="detail" hidden></div>
+    </main>
+
+    <aside id="list">
+      <div id="status" class="status">Loading data…</div>
+      <ul id="results"></ul>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

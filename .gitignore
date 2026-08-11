@@ -1,0 +1,6 @@
+data/raw/
+data/work/
+node_modules/
+dist/
+.venv/
+__pycache__/
