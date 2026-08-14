@@ -6,11 +6,12 @@ Run after a build to confirm the search surfaces places people actually descend.
 from __future__ import annotations
 
 import argparse
-import json
-import struct
 from pathlib import Path
 
 import numpy as np
+
+from . import payload
+from .payload import chain_lonlat
 
 # Commercially operated or well-documented descents, located on their gorge.
 # Keep in step with web/src/known.ts.
@@ -27,24 +28,13 @@ VENUES = {
 
 
 def load(out: Path):
-    meta = json.loads((out / "profiles.json").read_text())
-    raw = (out / "profiles.bin").read_bytes()
-    magic, total, n_chains, spacing = struct.unpack_from("<4sIII", raw, 0)
-    assert magic == b"CNY3", magic
-    off = 16
-    z = np.frombuffer(raw, np.int16, total, off).astype(np.float32) / 10
-    off += total * 2
-    up = np.frombuffer(raw, np.uint16, total, off).astype(np.float32) / 10
-    off += total * 2
-    dlon = np.frombuffer(raw, np.int16, total, off).astype(np.int64)
-    dlat = np.frombuffer(raw, np.int16, total, off + total * 2).astype(np.int64)
-
-    xy = np.empty((total, 2), dtype=np.float64)
-    for c in meta["chains"]:
-        s = slice(c["o"], c["o"] + c["n"])
-        xy[s, 0] = (c["lon0"] + np.cumsum(dlon[s]) - dlon[s][0]) / 1e7
-        xy[s, 1] = (c["lat0"] + np.cumsum(dlat[s]) - dlat[s][0]) / 1e7
-    return meta, z, up, xy, float(spacing)
+    pay = payload.load(out)
+    xy = np.empty((pay.total, 2), dtype=np.float64)
+    for c in pay.chains:
+        s = pay.chain(c)
+        xy[s, 0], xy[s, 1] = chain_lonlat(c, pay.dlon, pay.dlat)
+    return (pay.meta, pay.z.astype(np.float32) / 10,
+            pay.up.astype(np.float32) / 10, xy, pay.spacing)
 
 
 def best_segment(z: np.ndarray, spacing: float, min_len: float, max_len: float):

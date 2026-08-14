@@ -4,17 +4,23 @@ let meta: Payload;
 let model: ScoreModel | null = null;
 let z: Int16Array; // decimetres
 let up: Uint16Array; // 0.1 km of upstream watercourse
+let drain: Float32Array; // km² draining to the sample, from canyon.watershed
 let conf: Uint8Array; // metres of valley-side rise 100 m out
 let lon: Float64Array;
 let lat: Float64Array;
 let bounds: Float64Array; // per chain: minLon, minLat, maxLon, maxLat
+
+// Drainage area is stored as a delta of sqrt(km²) in fixed point; two bytes
+// cannot hold 5,000 km² linearly and still resolve a headwater burn. Must match
+// DRAIN_SCALE in canyon/payload.py.
+const DRAIN_SCALE = 500;
 
 export function decode(bin: ArrayBuffer, payload: Payload, score?: ScoreModel | null) {
   meta = payload;
   model = score ?? null;
   const head = new DataView(bin);
   const magic = String.fromCharCode(...new Uint8Array(bin, 0, 4));
-  if (magic !== 'CNY3') throw new Error(`bad payload magic: ${magic}`);
+  if (magic !== 'CNY4') throw new Error(`bad payload magic: ${magic}`);
   const total = head.getUint32(4, true);
   let off = 16;
   z = new Int16Array(bin, off, total);
@@ -23,20 +29,25 @@ export function decode(bin: ArrayBuffer, payload: Payload, score?: ScoreModel | 
   off += total * 2;
   const dlon = new Int16Array(bin, off, total);
   const dlat = new Int16Array(bin, off + total * 2, total);
-  conf = new Uint8Array(bin, off + total * 4, total);
+  const ddrain = new Uint16Array(bin, off + total * 4, total);
+  conf = new Uint8Array(bin, off + total * 6, total);
 
   lon = new Float64Array(total);
   lat = new Float64Array(total);
+  drain = new Float32Array(total);
   bounds = new Float64Array(payload.chains.length * 4);
   payload.chains.forEach((c, ci) => {
     let qlon = c.lon0;
     let qlat = c.lat0;
+    let qdrain = c.drain0 ?? 0;
     let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
     for (let k = 0; k < c.n; k++) {
       if (k > 0) {
         qlon += dlon[c.o + k];
         qlat += dlat[c.o + k];
+        qdrain += ddrain[c.o + k];
       }
+      drain[c.o + k] = (qdrain / DRAIN_SCALE) ** 2;
       const a = qlon / 1e7;
       const b = qlat / 1e7;
       lon[c.o + k] = a;
@@ -211,6 +222,7 @@ export function search(q: Query): {
         if (g > steepest) steepest = g;
       }
       const catchment = up[o + i] / 10;
+      const area = drain[o + i];
       const confine = windowConfine(i, j);
       out.push({
         chain: ci,
@@ -222,10 +234,12 @@ export function search(q: Query): {
         gradient: drop / length,
         steepest: steepest || drop / length,
         catchment,
+        drain: area,
         confine,
         score: prospect({
           gradient: drop / length,
           catchment_km: catchment,
+          drain_km2: area,
           confine_100m: confine,
         }),
         top: z[o + i] / 10,

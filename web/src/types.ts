@@ -4,6 +4,7 @@ export interface ChainMeta {
   name: string;
   runs: [number, string][];
   screen: number[];
+  drain0?: number;
   top: number;
   bottom: number;
   dem?: string;
@@ -58,6 +59,7 @@ export interface Candidate {
   gradient: number;
   steepest: number; // steepest 100m within the reach
   catchment: number; // km of watercourse upstream of the top
+  drain: number; // km² draining to the top of the reach
   confine: number; // mean rise of the lower valley side 100 m out, metres
   score: number; // prospect score; higher ranks more canyon-like
   top: number;

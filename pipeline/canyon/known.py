@@ -23,7 +23,8 @@ from pyproj import Transformer
 from shapely.geometry import Point
 
 from .boundary import scotland
-from .refine import chain_lonlat, load_payload
+from . import payload
+from .payload import chain_lonlat
 
 SOURCE = "https://canyonlog.org/wp-json/mapster-wp-maps/map?id=17437"
 GRADE_RE = re.compile(r"Grade:\s*([^<\n]+)")
@@ -92,12 +93,13 @@ def main() -> None:
             inside.append(r)
     print(f"  {len(inside)} in Scotland")
 
-    meta, z, up, conf, dlon, dlat, total, spacing = load_payload(a.out)
+    pay = payload.load(a.out)
+    meta, total = pay.meta, pay.total
     lon_all = np.empty(total)
     lat_all = np.empty(total)
     chain_of = np.empty(total, dtype=np.int32)
     for ci, c in enumerate(meta["chains"]):
-        lo, la = chain_lonlat(c, dlon, dlat)
+        lo, la = chain_lonlat(c, pay.dlon, pay.dlat)
         s = slice(c["o"], c["o"] + c["n"])
         lon_all[s], lat_all[s], chain_of[s] = lo, la, ci
 
@@ -115,7 +117,7 @@ def main() -> None:
         zc = z[c["o"]: c["o"] + c["n"]].astype(np.float32) / 10
         hit = idx - c["o"]
         i, j, grad = best_reach(zc, hit, spacing, a.min_len, a.max_len)
-        lo, la = chain_lonlat(c, dlon, dlat)
+        lo, la = chain_lonlat(c, pay.dlon, pay.dlat)
         out.append({
             **r,
             "snap_m": round(snap),

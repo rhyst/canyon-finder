@@ -11,8 +11,6 @@ instant and no query hits a server.
 from __future__ import annotations
 
 import argparse
-import json
-import struct
 import time
 from pathlib import Path
 
@@ -20,7 +18,7 @@ import numpy as np
 from pyproj import Transformer
 from shapely.geometry import Point
 
-from . import rivers
+from . import payload, rivers
 from .boundary import scotland
 from .dem import Terrain50
 from .features import confinement
@@ -160,23 +158,25 @@ def build(raw: Path, out: Path, gpkg: Path, bbox: tuple[float, ...] = BBOX) -> N
           f"{total * SPACING / 1000:,.0f} km ({dropped} dropped for missing DEM)")
 
     out.mkdir(parents=True, exist_ok=True)
-    with (out / "profiles.bin").open("wb") as f:
-        f.write(struct.pack("<4sIII", b"CNY3", total, len(index), int(SPACING)))
-        # uint8 array goes last: an odd sample count would misalign the int16s.
-        f.write(np.concatenate(z_parts).tobytes())
-        f.write(np.concatenate(up_parts).tobytes())
-        f.write(np.concatenate([p[0] for p in xy_parts]).tobytes())
-        f.write(np.concatenate([p[1] for p in xy_parts]).tobytes())
-        f.write(np.concatenate(conf_parts).tobytes())
-
-    (out / "profiles.json").write_text(json.dumps({
-        "spacing": SPACING,
-        "scales": SCALES,
-        "samples": total,
-        "dem": "OS Terrain 50 (50m)",
-        "confine_radius": CONFINE_RADIUS,
-        "chains": index,
-    }))
+    payload.save(out, payload.Payload(
+        meta={
+            "spacing": SPACING,
+            "scales": SCALES,
+            "samples": total,
+            "dem": "OS Terrain 50 (50m)",
+            "confine_radius": CONFINE_RADIUS,
+            "chains": index,
+        },
+        z=np.concatenate(z_parts),
+        up=np.concatenate(up_parts),
+        # Drainage area needs the whole national grid, so canyon.watershed fills
+        # it in afterwards rather than holding up every build.
+        drain=np.zeros(total, np.float32),
+        conf=np.concatenate(conf_parts),
+        dlon=np.concatenate([p[0] for p in xy_parts]),
+        dlat=np.concatenate([p[1] for p in xy_parts]),
+        spacing=SPACING,
+    ))
     print(f"done in {time.time() - t0:.0f}s -> {out}")
 
 

@@ -33,10 +33,10 @@ from pathlib import Path
 import numpy as np
 from pyproj import Transformer
 
-from . import rivers
+from . import payload, rivers
 from .build import BBOX, SQUARES
 from .dem import CELL, N, TILE, Terrain50
-from .refine import chain_lonlat, load_payload
+from .payload import chain_lonlat
 
 # Cells at or below this drain off the map. Terrain 50 carries sea as data near
 # zero, not as nodata, so without this the coast becomes one national flat.
@@ -387,18 +387,22 @@ def report(meta: dict, up: np.ndarray, drain: np.ndarray) -> None:
     print(f"  log correlation with upstream channel length: "
           f"{np.corrcoef(np.log1p(length[both]), np.log1p(drain[both]))[0, 1]:.3f}")
 
-    # The headwaters canyon.rank ranks worst: channel length reads blind there,
-    # so what matters is whether area does not.
-    print("\nheadwater burns the channel-length feature cannot see:")
-    print(f"  {'watercourse':28} {'channel km':>10} {'area km2':>9}")
+    # The headwaters canyon.rank ranks worst. Head and foot are both shown
+    # because only the head is the canyon's own: quoting a chain's maximum credits
+    # a burn with everything its river collects kilometres downstream, which is
+    # how High Grain came to be reported at 10 km² when 0.3 drains into it.
+    print("\nheadwater burns, where channel length reads near zero:")
+    print(f"  {'watercourse':24} {'channel km':>10} {'km2 at head':>12} "
+          f"{'km2 at foot':>12}")
     for name in ("Allt an Earrochd", "High Grain", "Allt Coire Sgamadail"):
         hit = next((c for c in meta["chains"] if c["name"] == name
                     or any(n == name for _, n in c["runs"])), None)
         if hit is None:
-            print(f"  {name:28} {'not in payload':>20}")
+            print(f"  {name:24} {'not in payload':>36}")
             continue
         s = slice(hit["o"], hit["o"] + hit["n"])
-        print(f"  {name:28} {length[s].max():10.2f} {drain[s].max():9.2f}")
+        print(f"  {name:24} {length[s].max():10.2f} {drain[s][0]:12.2f} "
+              f"{drain[s][-1]:12.2f}")
 
 
 def selftest() -> None:
@@ -490,16 +494,19 @@ def main() -> None:
 
     validate(grid, area, a.work / "nrfa_stations.csv")
 
-    meta, z, up, conf, dlon, dlat, total, spacing = load_payload(a.out)
-    drain, held = sample_chains(grid, area, meta, dlon, dlat, total)
+    pay = payload.load(a.out)
+    meta, total = pay.meta, pay.total
+    drain, held = sample_chains(grid, area, meta, pay.dlon, pay.dlat, total)
     print(f"sampled {total:,} profile points, {held:,} held at a shared "
           f"confluence cell ({time.time() - t0:.0f}s)", flush=True)
-    report(meta, up, drain)
+    report(meta, pay.up, drain)
 
-    dst = a.work / "watershed.npz"
-    np.savez_compressed(dst, area=drain, cell=a.cell, burn=BURN,
-                        burn_slope=BURN_SLOPE, sea=SEA, samples=total)
-    print(f"\nwrote {dst} in {time.time() - t0:.0f}s")
+    pay.drain = drain
+    meta["drain_cell"] = a.cell
+    payload.save(a.out, pay)
+    size = (a.out / "profiles.bin").stat().st_size
+    print(f"\nwrote drainage into {a.out / 'profiles.bin'} "
+          f"({size / 1e6:.1f} MB) in {time.time() - t0:.0f}s")
 
 
 if __name__ == "__main__":

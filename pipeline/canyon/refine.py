@@ -8,8 +8,6 @@ LiDAR covers is re-profiled at 0.5-2 m and flagged in the payload.
 from __future__ import annotations
 
 import argparse
-import json
-import struct
 import time
 from pathlib import Path
 
@@ -17,45 +15,12 @@ import numpy as np
 import rasterio
 from pyproj import Transformer
 
+from . import payload
 from .build import (CONFINE_RADIUS, MIN_SCREEN_GRADIENT, SCALES, condition,
                     max_gradient_at_scale)
 from .features import confinement
 from .lidar import GDAL_ENV, LidarSampler, build_index
-
-
-def load_payload(out: Path):
-    meta = json.loads((out / "profiles.json").read_text())
-    raw = bytearray((out / "profiles.bin").read_bytes())
-    magic, total, n_chains, spacing = struct.unpack_from("<4sIII", raw, 0)
-    assert magic == b"CNY3", magic
-    off = 16
-    z = np.frombuffer(bytes(raw[off:off + total * 2]), np.int16).copy()
-    off += total * 2
-    up = np.frombuffer(bytes(raw[off:off + total * 2]), np.uint16).copy()
-    off += total * 2
-    dlon = np.frombuffer(bytes(raw[off:off + total * 2]), np.int16).copy()
-    dlat = np.frombuffer(bytes(raw[off + total * 2:off + total * 4]), np.int16).copy()
-    off += total * 4
-    conf = np.frombuffer(bytes(raw[off:off + total]), np.uint8).copy()
-    return meta, z, up, conf, dlon, dlat, total, float(spacing)
-
-
-def chain_lonlat(c: dict, dlon: np.ndarray, dlat: np.ndarray):
-    s = slice(c["o"], c["o"] + c["n"])
-    lon = (c["lon0"] + np.cumsum(dlon[s].astype(np.int64)) - int(dlon[s][0])) / 1e7
-    lat = (c["lat0"] + np.cumsum(dlat[s].astype(np.int64)) - int(dlat[s][0])) / 1e7
-    return lon, lat
-
-
-def save_payload(out: Path, meta, z, up, conf, dlon, dlat, total, spacing) -> None:
-    with (out / "profiles.bin").open("wb") as f:
-        f.write(struct.pack("<4sIII", b"CNY3", total, len(meta["chains"]), int(spacing)))
-        f.write(z.astype(np.int16).tobytes())
-        f.write(up.astype(np.uint16).tobytes())
-        f.write(dlon.astype(np.int16).tobytes())
-        f.write(dlat.astype(np.int16).tobytes())
-        f.write(conf.astype(np.uint8).tobytes())
-    (out / "profiles.json").write_text(json.dumps(meta))
+from .payload import chain_lonlat
 
 
 def refine(out: Path, work: Path, bbox: tuple[float, float, float, float],
@@ -71,14 +36,15 @@ def _refine(out: Path, work: Path, bbox: tuple[float, float, float, float],
     tiles = build_index(work / "lidar_tiles.json")
     print(f"  {len(tiles)} DTM tiles, finest {min(t.res for t in tiles)} m")
 
-    meta, z, up, conf, dlon, dlat, total, spacing = load_payload(out)
+    pay = payload.load(out)
+    meta, z, conf = pay.meta, pay.z, pay.conf
     to_bng = Transformer.from_crs(4326, 27700, always_xy=True)
     sampler = LidarSampler(tiles, radius=radius)
 
     minx, miny, maxx, maxy = bbox
     done = improved = 0
     for c in meta["chains"]:
-        lon, lat = chain_lonlat(c, dlon, dlat)
+        lon, lat = chain_lonlat(c, pay.dlon, pay.dlat)
         x, y = to_bng.transform(lon, lat)
         x, y = np.asarray(x), np.asarray(y)
         if x.max() < minx or x.min() > maxx or y.max() < miny or y.min() > maxy:
@@ -123,7 +89,7 @@ def _refine(out: Path, work: Path, bbox: tuple[float, float, float, float],
     # prescreen in the browser filters them out at query time.
     meta["dem"] = meta.get("dem", "") + " + Scottish public sector LiDAR where available"
     meta["lidar_refined"] = int(sum(1 for c in meta["chains"] if c.get("dem")))
-    save_payload(out, meta, z, up, conf, dlon, dlat, total, spacing)
+    payload.save(out, pay)
     kept = sum(1 for c in meta["chains"] if max(c["screen"]) >= MIN_SCREEN_GRADIENT)
     print(f"re-profiled {improved} chains in {time.time() - t0:.0f}s "
           f"({kept} of {len(meta['chains'])} still above the screen floor)")

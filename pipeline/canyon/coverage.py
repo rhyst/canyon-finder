@@ -13,9 +13,10 @@ from pathlib import Path
 import numpy as np
 from pyproj import Transformer
 
+from . import payload
 from .build import SCALES
 from .lidar import LidarSampler, build_index
-from .refine import chain_lonlat, load_payload
+from .payload import chain_lonlat
 
 
 def main() -> None:
@@ -31,7 +32,8 @@ def main() -> None:
 
     tiles = build_index(a.work / "lidar_tiles.json")
     sampler = LidarSampler(tiles)
-    meta, z, up, conf, dlon, dlat, total, spacing = load_payload(a.out)
+    pay = payload.load(a.out)
+    meta = pay.meta
     to_bng = Transformer.from_crs(4326, 27700, always_xy=True)
     si = SCALES.index(a.scale)
 
@@ -41,7 +43,7 @@ def main() -> None:
         if c["screen"][si] < a.gradient:
             continue
         steep += 1
-        lon, lat = chain_lonlat(c, dlon, dlat)
+        lon, lat = chain_lonlat(c, pay.dlon, pay.dlat)
         x, y = to_bng.transform(lon, lat)
         x, y = np.asarray(x), np.asarray(y)
         hits = [sampler.tile_for(float(x[i]), float(y[i]))
