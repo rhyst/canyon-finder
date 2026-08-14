@@ -62,6 +62,8 @@ uv run python -m canyon.validate                   # check against known venues
 uv run python -m canyon.coverage                   # LiDAR coverage of the shortlist
 uv run python -m canyon.refine --bbox 283000 692000 302000 704000  # LiDAR re-profile
 uv run python -m canyon.known                      # logged canyons -> known.json
+uv run python -m canyon.watershed                  # drainage area per sample
+uv run python -m canyon.watershed --selftest       # routing on known grids
 ```
 
 What `build` does:
@@ -340,8 +342,30 @@ at 25 or above and background median 0; Bruar 88 (top 0.3%), Alva 86, Acharn 75,
 The low tail is honest signal about the model's weak spot: the graded canyons it ranks
 worst — Allt an Earrochd (0.1 km upstream), High Grain (0.0 km) — are tiny headwater burns.
 Upstream *channel length* is near zero for a first-order headwater even where real drainage
-exists, so the strongest feature reads blind there. Drainage area from a flow-accumulation
-raster would fix it; channel length was the free approximation.
+exists, so the strongest feature reads blind there.
+
+`canyon.watershed` measures the area instead, off the DEM already downloaded. It burns the
+river network into a 100 m grid, priority-floods every depression and flat so each cell has
+a downhill path to the sea, then accumulates D8 flow — one national pass, about a minute and
+1.6 GB, giving a drainage area at all 1.98M profile samples. The blind spot closes: Allt an
+Earrochd reads 1.2 km², High Grain 10.2 km², Allt Coire Sgamadail 2.1 km², none of which
+0.1 km of mapped channel could express. It lands within a few percent of published
+catchment areas:
+
+| river | measured | published |
+| --- | --- | --- |
+| Tay | 4,992 km² | ~4,600 |
+| Tweed | 4,419 km² | ~4,390 |
+| Spey | 2,950 km² | ~2,900 |
+| Dee | 2,077 km² | ~2,100 |
+| Clyde | 1,941 km² | ~1,900 |
+| Don | 1,320 km² | ~1,330 |
+
+Two things it is not: burned into the payload (it writes `data/work/watershed.npz`, so no
+feature uses it yet), and free of edge cases — a chain ending at a confluence shares its
+last 100 m cell with the river it joins, which read the trunk's whole basin until the tail
+of each chain was clamped. That clamp touches 1.4% of samples and a 50 m grid would shrink
+it.
 
 Note *max* confinement, not median: a canyon needs one enclosed section, not uniform
 enclosure. And max catchment, which lands at the foot of the descent where the water is
