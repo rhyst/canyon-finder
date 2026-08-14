@@ -31,6 +31,7 @@ export interface GroupFeatures {
   continuity: number; // steep_length / span_length: one gorge or scattered steps
   reaches: number;
   catchment_km: number; // at the foot, where the water is greatest
+  drain_km2: number; // drainage area at the foot, the same idea measured properly
   confine_max: number;
   confine_median: number;
   top_m: number;
@@ -57,6 +58,7 @@ export function groupFeatures(members: Candidate[], spacing: number): GroupFeatu
     continuity: spanLength ? steepLength / spanLength : 1,
     reaches: members.length,
     catchment_km: Math.max(...members.map((c) => c.catchment)),
+    drain_km2: Math.max(...members.map((c) => c.drain)),
     confine_max: Math.max(...members.map((c) => c.confine)),
     confine_median: median(members.map((c) => c.confine)),
     top_m: first.top,

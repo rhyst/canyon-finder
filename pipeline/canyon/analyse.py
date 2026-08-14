@@ -19,8 +19,9 @@ from pyproj import Transformer
 
 from .build import CONFINE_RADIUS, SQUARES
 from .dem import Terrain50
+from . import payload
 from .features import RADII, confinement, reach_features
-from .refine import chain_lonlat, load_payload
+from .payload import chain_lonlat
 
 GRADED = {"Basic", "Moderate", "Advanced"}
 REJECTED = {"0 Stars"}  # visited, found not worth it
@@ -49,16 +50,12 @@ def main() -> None:
                    help="floor for the background candidate pool")
     a = p.parse_args()
 
-    meta, z_all, up_all, conf_all, dlon, dlat, total, spacing = load_payload(a.out)
+    pay = payload.load(a.out)
+    meta, spacing = pay.meta, pay.spacing
+    z_all, up_all, conf_all, drain_all = pay.z, pay.up, pay.conf, pay.drain
     logged = json.loads((a.out / "known.json").read_text())["canyons"]
-    # Drainage area is optional: canyon.watershed is a separate national pass.
-    ws = a.work / "watershed.npz"
-    drain_all = np.load(ws)["area"] if ws.exists() else None
-    if drain_all is None:
-        print(f"no {ws.name}; drainage area will read zero "
-              f"(run python -m canyon.watershed)")
-    elif len(drain_all) != total:
-        raise SystemExit(f"{ws} has {len(drain_all)} samples, payload has {total}")
+    if not drain_all.any():
+        print("payload carries no drainage area; run python -m canyon.watershed")
     dem = Terrain50.load(a.raw / "terr50", set(SQUARES),
                          cache=a.raw.parent / "work" / "terr50.npz")
     to_bng = Transformer.from_crs(4326, 27700, always_xy=True)
@@ -88,8 +85,8 @@ def main() -> None:
         s = slice(c["o"], c["o"] + c["n"])
         zc = z_all[s].astype(np.float64) / 10
         upc = up_all[s].astype(np.float64) / 10
-        dr = drain_all[s] if drain_all is not None else None
-        lon, lat = chain_lonlat(c, dlon, dlat)
+        dr = drain_all[s]
+        lon, lat = chain_lonlat(c, pay.dlon, pay.dlat)
         x, y = to_bng.transform(lon, lat)
         # 100 m is the radius that ships, so it comes from the payload — the same
         # bytes the browser scores on, LiDAR where a chain was refined. The other
@@ -164,7 +161,6 @@ def main() -> None:
         print(f"{name:32} {keep_g * 100:9.0f}% {keep_r * 100:10.0f}% "
               f"{pool:8,} ({pool / n_bg * 100:3.0f}%) {sift:14.0f}")
 
-    compare_water(arrays)
     fit_score(arrays, a.out)
 
 
@@ -197,73 +193,49 @@ WATER_CAPS = {
 }
 
 
-def compare_water(arrays: dict[str, dict[str, np.ndarray]]) -> None:
-    """Fit the same score on channel length and on drainage area, side by side.
+def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path) -> None:
+    """Fit graded-vs-background on the three features that carry signal.
 
-    Channel length is a proxy for how much water a reach carries, and a poor one
-    at a headwater. Drainage area is the real quantity. This says whether
-    swapping them is worth the payload change, since the browser cannot score on
-    a feature it does not carry.
+    Two of them are settled — gradient and confinement. The third is "how much
+    water", and there are two ways to measure it, so both are fitted and the
+    better wins. Either way the term is capped: past the graded p90 there is no
+    evidence that more water means more canyon, and uncapped the term ranks major
+    rivers — the Clyde, 600 km of channel — above every real gorge.
     """
-    if not arrays["graded"]["drain_km2"].any():
-        return
-    print("\nchannel length against drainage area, same fit:")
-    print(f"  {'water feature':16} {'best cap':>9} {'AUC vs bg':>10} "
-          f"{'AUC vs 0-star':>14} {'top-2% graded':>14}")
+    print("\nprospect score, choosing how to measure water and where to cap it:")
+    print(f"  {'water':14} {'cap':>8} {'AUC vs bg':>10} {'AUC vs 0-star':>14} "
+          f"{'top-2% graded':>14}")
+    results = []
     for water, caps in WATER_CAPS.items():
-        best = None
+        if not arrays["graded"][water].any():
+            continue
         for cap in caps:
             pos, bg, rej = (design(arrays, g, cap, water)
                             for g in ("graded", "background", "rejected"))
             mu, sd = bg.mean(axis=0), bg.std(axis=0)
             Xp, Xb, Xr = ((M - mu) / sd for M in (pos, bg, rej))
             X = np.column_stack([np.ones(len(Xp) + len(Xb)), np.vstack([Xp, Xb])])
-            w = logistic(X, np.concatenate([np.ones(len(Xp)), np.zeros(len(Xb))]))
+            y = np.concatenate([np.ones(len(Xp)), np.zeros(len(Xb))])
+            w = logistic(X, y)
             score = lambda M: np.column_stack([np.ones(len(M)), M]) @ w
             sp, sb, sr = score(Xp), score(Xb), score(Xr)
-            row = (round(auc(sp, sr), 3), auc(sp, sb), cap,
-                   (sp >= np.quantile(sb, 0.98)).mean())
-            if best is None or row > best:
-                best = row
-        a_rej, a_bg, cap, top = best
-        print(f"  {water:16} {cap:9,.0f} {a_bg:10.3f} {a_rej:14.3f} "
-              f"{top * 100:13.0f}%")
-
-
-def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path) -> None:
-    """Fit graded-vs-background on the three features that carry signal.
-
-    The catchment term is capped: past the graded p90 there is no evidence that
-    more water means more canyon, and an uncapped term ranks major rivers — the
-    Clyde at 600 km upstream — above every real gorge.
-    """
-    print("\nprospect score, choosing the catchment cap:")
-    print(f"  {'cap (km)':>9} {'AUC vs bg':>10} {'AUC vs 0-star':>14} {'top-2% graded':>14}")
-    results = []
-    for cap in (10, 20, 30, 50, 100, 1e6):
-        pos, bg, rej = (design(arrays, g, cap) for g in ("graded", "background", "rejected"))
-        mu, sd = bg.mean(axis=0), bg.std(axis=0)
-        Xp, Xb, Xr = ((M - mu) / sd for M in (pos, bg, rej))
-        X = np.column_stack([np.ones(len(Xp) + len(Xb)), np.vstack([Xp, Xb])])
-        y = np.concatenate([np.ones(len(Xp)), np.zeros(len(Xb))])
-        w = logistic(X, y)
-        score = lambda M: np.column_stack([np.ones(len(M)), M]) @ w
-        sp, sb, sr = score(Xp), score(Xb), score(Xr)
-        top = (sp >= np.quantile(sb, 0.98)).mean()
-        results.append((cap, auc(sp, sb), auc(sp, sr), top, w, mu, sd))
-        print(f"  {cap:9,.0f} {auc(sp, sb):10.3f} {auc(sp, sr):14.3f} {top * 100:13.0f}%")
+            top = (sp >= np.quantile(sb, 0.98)).mean()
+            results.append((water, cap, auc(sp, sb), auc(sp, sr), top, w, mu, sd))
+            print(f"  {water:14} {cap:8,.0f} {auc(sp, sb):10.3f} "
+                  f"{auc(sp, sr):14.3f} {top * 100:13.0f}%")
 
     # 0-star is the comparison that matters: it is the one that says "worth it".
-    cap, a_bg, a_rej, top, w, mu, sd = max(results, key=lambda r: (round(r[2], 3), r[1]))
-    print(f"  chosen cap {cap:,.0f} km — AUC {a_bg:.2f} vs background, "
-          f"{a_rej:.2f} vs 0-star, top 2% holds {top * 100:.0f}% of graded")
-    for n, c in zip(("gradient", "log1p(catchment, capped)", "confine_100m"), w[1:]):
+    water, cap, a_bg, a_rej, top, w, mu, sd = max(
+        results, key=lambda r: (round(r[3], 3), r[2]))
+    print(f"  chose {water} capped at {cap:,.0f} — AUC {a_bg:.3f} vs background, "
+          f"{a_rej:.3f} vs 0-star, top 2% holds {top * 100:.0f}% of graded")
+    for n, c in zip(("gradient", f"log1p({water}, capped)", "confine_100m"), w[1:]):
         print(f"    {n:26} {c:+.3f}")
 
     (out / "score.json").write_text(json.dumps({
         "transform": [
             {"name": "gradient"},
-            {"name": "catchment_km", "cap": cap, "log1p": True},
+            {"name": water, "cap": cap, "log1p": True},
             {"name": "confine_100m", "cap": CONFINE_CAP},
         ],
         "mean": mu.tolist(),

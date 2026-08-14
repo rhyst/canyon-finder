@@ -21,7 +21,7 @@ import {
   type Group, type GroupModel, type Row,
 } from './grouping';
 import { covered, isDud, isGraded } from './canyonlog';
-import { reachLine, watercourseLine } from './format';
+import { fmtArea, reachLine, watercourseLine } from './format';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
@@ -441,7 +441,8 @@ function renderRow(row: Row, i: number): HTMLLIElement {
       <span class="name">${cand.drop.toFixed(0)} m over ${cand.length.toFixed(0)} m</span>
       <span class="grad">${(cand.gradient * 100).toFixed(0)}%</span>
       <span class="meta">steepest 100 m ${(cand.steepest * 100).toFixed(0)}% ·
-        confinement ${cand.confine.toFixed(0)} m · top ${cand.top.toFixed(0)} m</span>`;
+        confinement ${cand.confine.toFixed(0)} m · ${fmtArea(cand.drain)} draining ·
+        top ${cand.top.toFixed(0)} m</span>`;
   } else {
     const n = group.members.length;
     li.className = 'group';
@@ -458,7 +459,7 @@ function renderRow(row: Row, i: number): HTMLLIElement {
            ${group.spanDrop.toFixed(0)} m over a ${(group.spanLength / 1000).toFixed(1)} km span`
         : `${group.best.drop.toFixed(0)} m over ${group.best.length.toFixed(0)} m ·
            steepest 100 m ${(group.best.steepest * 100).toFixed(0)}%`} ·
-        ${group.best.catchment.toFixed(1)} km upstream · ${group.best.dem} DEM</span>`;
+        ${fmtArea(group.best.drain)} draining · ${group.best.dem} DEM</span>`;
   }
 
   li.onclick = (e) => {

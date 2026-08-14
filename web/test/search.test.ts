@@ -276,8 +276,8 @@ check('the browser reproduces the fitted group ranking', () => {
     `${graded(500)} of the graded canyons, ${zero(50)}/${zero(250)}/${zero(500)} zero-star`);
 
   // canyon.rank reported these from the Python fit; the TS transform must agree.
-  assert.equal(graded(50), 14, 'top-50 graded recall differs from the Python fit');
-  assert.equal(graded(500), 47, 'top-500 graded recall differs from the Python fit');
+  assert.equal(graded(50), 16, 'top-50 graded recall differs from the Python fit');
+  assert.equal(graded(500), 49, 'top-500 graded recall differs from the Python fit');
 });
 
 check('logged canyons sit high on the promise scale', () => {

@@ -1,8 +1,8 @@
 # Canyon Finder — Scotland
 
 Finds watercourse reaches steep enough to be worth looking at for canyoning: X metres of
-drop over Y metres of channel. All of Scotland is precompiled into a ~16 MB payload
-(8 MB gzipped) that the browser searches itself, so gradient and length sliders re-query
+drop over Y metres of channel. All of Scotland is precompiled into a ~22 MB payload
+(10 MB gzipped) that the browser searches itself, so gradient and length sliders re-query
 2 million elevation samples in ~200 ms with no server.
 
 ```
@@ -81,8 +81,10 @@ What `build` does:
    100 m out, perpendicular to flow. Both sides have to climb for a reach to be enclosed.
 6. Drops chains with no window anywhere near steep (< 4% at every scale), then packs
    elevation (int16 dm), upstream length (uint16), delta-encoded geometry (int16 at 1e-7°,
-   exact on reconstruction) and confinement (uint8 m, written last so it cannot misalign
-   the int16 arrays) into `profiles.bin`.
+   exact on reconstruction), drainage area (uint16, delta of √km² — see `payload.py`) and
+   confinement (uint8 m, written last so it cannot misalign the int16 arrays) into
+   `profiles.bin`. `canyon.watershed` fills the drainage array in afterwards, the way
+   `refine` rewrites elevation.
 
 `refine` replaces those profiles with LiDAR ones where tiles exist. It samples the
 **minimum elevation within 12 m** of each point rather than the point itself: OS Open
@@ -210,7 +212,9 @@ a reach upstream past a name change, relabelling a group without losing any wate
 
 Alongside the presets you can filter on gradient, length, upstream channel length (both
 ends — a ceiling keeps major rivers out), valley confinement and altitude, and sort by **promise** (the default, shown on every group row),
-total drop, gradient, steepest 100 m, length, catchment or confinement. Promise is the only
+total drop, gradient, steepest 100 m, length, catchment or confinement. Rows report the
+**drainage area** rather than channel length, since that is what the ranking now uses; the
+sliders still filter on channel length. Promise is the only
 score the UI exposes; the reach-level fit from `canyon.analyse` survives as the internal
 tie-breaker deciding which reaches survive the result cap, and as the evidence for which
 features matter. **Hide logged** drops watercourses within 250 m of
@@ -259,7 +263,8 @@ Medians with interquartile range, and AUC as the discriminating power:
 | feature | graded | 0-star | background | AUC v 0-star | AUC v background |
 | --- | --- | --- | --- | --- | --- |
 | gradient | 0.20 | **0.25** | 0.10 | 0.41 | 0.73 |
-| catchment (km upstream) | **4.6** | 2.3 | 0.6 | **0.69** | 0.84 |
+| drainage area (km²) | **6.8** | 3.8 | 1.3 | **0.71** | 0.86 |
+| catchment (km upstream) | 4.6 | 2.3 | 0.6 | 0.69 | 0.84 |
 | confinement at 100 m (m) | **11.6** | 8.5 | 4.6 | 0.64 | 0.72 |
 | steepest 100 m | 0.30 | 0.31 | 0.16 | 0.48 | 0.77 |
 | steepest 25 m step | 0.46 | 0.48 | 0.23 | 0.56 | 0.84 |
@@ -297,17 +302,18 @@ What filters cost, and how much sifting they save:
 | gradient ≥ 10% & catchment ≥ 2 km | 60% | 47% | 1,545 (6%) | 28 |
 | gradient ≥ 15% & catchment ≥ 3 km | 36% | 24% | 280 (1%) | **8** |
 
-A logistic fit on the three useful features (standardised weights: catchment +1.12,
-gradient +0.84, confinement +0.24) scores **AUC 0.94** against background and 0.68 against
-0-star, and its top 2% of the pool holds 49% of all graded canyons. The catchment term is
-**capped at 50 km** — chosen by AUC against the 0-star set. Uncapped it ranked the River
-Clyde (617 km upstream) above every real gorge, because more water is only evidence of a
-canyon up to a point. The fit ships as `score.json`, including the feature order, caps and
-transform, so the browser cannot drift from what was fitted.
+A logistic fit on the three useful features (standardised weights: drainage area +1.06,
+gradient +0.87, confinement +0.26) scores **AUC 0.948** against background and 0.700 against
+0-star, and its top 2% of the pool holds 51% of all graded canyons. The water term is
+**capped at 200 km²** — chosen by AUC against the 0-star set, from a grid that also included
+channel length as the alternative feature. Uncapped, more water keeps counting as more
+canyon, which ranks the Clyde above every real gorge. The fit ships as `score.json`,
+including which feature won, the caps and the transform, so the browser cannot drift from
+what was fitted.
 
 Sorting the calibrated shortlist by that score puts known venues (Falls of Foyers, Falls of
 Bruar, End of the World) alongside reaches Canyon Log has never logged — River Tarff at 13%
-over 200 m with 48 km upstream and 72 m of confinement tops it. Whether those are real is
+over 200 m with 72 m of confinement tops it. Whether those are real is
 the point of the tool.
 
 ### Ranking whole watercourses: promise
@@ -322,13 +328,13 @@ Features are chosen by forward selection on **out-of-fold** AUC, which stops ear
 
 | step | added | out-of-fold AUC |
 | --- | --- | --- |
-| 1 | max catchment on the watercourse | 0.865 |
-| 2 | peak reach gradient | 0.933 |
-| 3 | max confinement anywhere on it | 0.943 |
-| — | next best (altitude) gains +0.000, stop | — |
+| 1 | max drainage area, capped at 50 km² | 0.866 |
+| 2 | peak reach gradient | 0.942 |
+| 3 | max confinement anywhere on it | 0.949 |
+| — | next best (overall gradient) gains -0.000, stop | — |
 
-Out-of-fold 0.943 against in-sample 0.944 says it is not overfitting. Against zero-star it
-manages 0.648 — the same ceiling the reach model hits, for the same reason.
+Out-of-fold 0.949 against in-sample 0.950 says it is not overfitting. Against zero-star it
+manages 0.661 — the same ceiling the reach model hits, for the same reason.
 
 **The scale is anchored on the logged canyons, not on probability.** The fit is a
 probability, but at a 0.7% base rate a calibrated probability reads 1% for a perfectly good
@@ -336,20 +342,40 @@ canyon, which is unusable — Falls of Barvick, a graded V3 A3 II ★★, came o
 sitting 621st of 11,677. Promise is therefore reported as position within the logged
 distribution: **50 is the median logged descent**, 0 is unremarkable water. Ranking is
 identical, being a monotone rescaling. Logged canyons then read median 51, with 63 of 84
-at 25 or above and background median 0; Bruar 88 (top 0.3%), Alva 86, Acharn 75, Barvick 37
+at 25 or above and background median 0; Bruar 84 (top 0.4%), Alva 81, Acharn 77, Barvick 37
 (top 5.3%). Those checks are asserted in `web/test/search.test.ts`.
 
-The low tail is honest signal about the model's weak spot: the graded canyons it ranks
-worst — Allt an Earrochd (0.1 km upstream), High Grain (0.0 km) — are tiny headwater burns.
-Upstream *channel length* is near zero for a first-order headwater even where real drainage
-exists, so the strongest feature reads blind there.
+### Drainage area, and a hypothesis that did not survive it
 
-`canyon.watershed` measures the area instead, off the DEM already downloaded. It burns the
+The low tail looked like the model's weak spot: the graded canyons it ranked worst — Allt an
+Earrochd, High Grain — are tiny headwater burns, and upstream *channel length* is near zero
+for a first-order headwater. The obvious reading was that real drainage exists there and the
+proxy could not see it.
+
+`canyon.watershed` measures the area properly, off the DEM already downloaded. It burns the
 river network into a 100 m grid, priority-floods every depression and flat so each cell has
 a downhill path to the sea, then accumulates D8 flow — one national pass, about a minute and
-1.6 GB, giving a drainage area at all 1.98M profile samples. The blind spot closes: Allt an
-Earrochd reads 1.2 km², High Grain 10.2 km², Allt Coire Sgamadail 2.1 km², none of which
-0.1 km of mapped channel could express.
+1.6 GB, giving a drainage area at all 1.98M profile samples.
+
+**It did not close the blind spot, and that is the more useful answer.** Measured at the
+canyon rather than at the chain's outlet, High Grain has **0.33 km²** draining into it and
+Allt an Earrochd 0.76 km². They are not headwaters whose drainage the channel-length proxy
+failed to see; they are headwaters with almost no drainage, and ranking them low is correct.
+Re-fitting moves High Grain from 4,274th of 11,677 to 4,829th — *down*. The original
+diagnosis above was wrong, and only a proper measurement could say so.
+
+What it does buy is a better feature everywhere else. Both models now fit on it, and both
+improve — the reach score to **AUC 0.948** against background and **0.700** against 0-star
+(from 0.937 and 0.683), and the watercourse ranking to **out-of-fold 0.949** from 0.943, with
+39 graded canyons in the top 250 rather than 38. Forward selection picks drainage area first,
+ahead of what used to be the strongest feature.
+
+**Where the water term saturates matters more than the feature swap.** Averaged over 11,542
+watercourses, out-of-fold AUC cannot tell a 50 km² cap from a 200 km² one — both read 0.866 —
+but the looser cap fills the top of the prospect list with major rivers carrying no gradient:
+the Clyde at 92 on a 14% peak, the River Doon at 9%. Uncapped drainage discriminates *better*
+on average and is *useless* to read. So the selection takes the tightest cap among ties, and
+the list comes back to Allt a' Chaoil-rèidhe at 57%, Tarff, Affric, Allt a' Choire Ghlais.
 
 **It is checked against every gauged catchment in the country.** The
 [NRFA station API](https://nrfaapps.ceh.ac.uk/nrfa/nrfa-api.html) publishes a measured
@@ -377,25 +403,26 @@ second one is clamped at the tail of each chain, touching 1.4% of samples.
 Nothing consumes the result yet: it writes `data/work/watershed.npz`.
 
 Note *max* confinement, not median: a canyon needs one enclosed section, not uniform
-enclosure. And max catchment, which lands at the foot of the descent where the water is
-greatest. Ranking by the fit puts 38 graded canyons in the top 250 watercourses, against 9
+enclosure. And max drainage, which lands at the foot of the descent where the water is
+greatest. Ranking by the fit puts 39 graded canyons in the top 250 watercourses, against 9
 for peak gradient alone and 19 for catchment alone.
 
 The top of the ranking with nothing logged on it reads as a prospect list:
 
-| promise | watercourse | steep drop | peak | catchment |
+| promise | watercourse | steep drop | peak | confinement |
 | --- | --- | --- | --- | --- |
-| 85% | River Tarff | 319 m in 3.0 km | 23% | 50 km |
-| 76% | River Affric | 212 m in 0.9 km | 37% | 133 km |
-| 67% | Allt a' Choire Ghlais | 514 m in 3.1 km | 47% | 7 km |
-| 65% | Allt a' Chaoil-rèidhe | 486 m in 2.0 km | 57% | 8 km |
-| 60% | Allt Garbhlach | 496 m in 3.0 km | 48% | 6 km |
-| 58% | Water of Unich | 231 m in 1.3 km | 25% | 18 km |
-| 41% | Allt a' Ghlomaich | 103 m in 0.9 km | 15% | 18 km |
+| 100 | Allt a' Chaoil-rèidhe | 486 m in 2.0 km | 57% | 9 m |
+| 100 | River Tarff | 319 m in 3.0 km | 23% | 31 m |
+| 100 | River Affric | 212 m in 0.9 km | 37% | 14 m |
+| 100 | Allt a' Choire Ghlais | 514 m in 3.1 km | 47% | 22 m |
+| 97 | Unnamed burn | 708 m in 2.5 km | 50% | 20 m |
+| 96 | Water of Unich | 231 m in 1.3 km | 25% | 41 m |
+| 95 | Allt Garbhlach | 496 m in 3.0 km | 48% | 28 m |
 
-Several are well-known gorges that simply are not in Canyon Log — Falls of Glomach sits on
-Allt a' Ghlomaich, and Water of Ailnack and Allt Garbhlach are documented Cairngorm gorges
-— which is the closest thing to external validation available here.
+Several are well-known gorges that simply are not in Canyon Log — Water of Ailnack and Allt
+Garbhlach are documented Cairngorm gorges, and Allt a' Ghlomaich carries the Falls of Glomach
+a little further down the ranking — which is the closest thing to external validation
+available here.
 
 **Independent fixture.** Eight hand-checked commercial descents also surface
 (`canyon.validate`, steepest 200 m–1.2 km window on the chain through each venue):

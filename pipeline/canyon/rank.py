@@ -32,6 +32,14 @@ CANDIDATES: list[tuple[str, dict]] = [
     ("continuity", {}),
     ("reaches", {"log1p": True}),
     ("catchment_km", {"log1p": True, "cap": 50.0}),
+    # Where the water term saturates decides whether a big flat river outranks a
+    # gorge, so the cap is selected rather than assumed. Uncapped, or capped too
+    # high, the Clyde's 1,900 km² beats Bruar's 73 and the top of the list fills
+    # with major rivers carrying no gradient.
+    ("drain_km2 <=10", {"src": "drain_km2", "log1p": True, "cap": 10.0}),
+    ("drain_km2 <=20", {"src": "drain_km2", "log1p": True, "cap": 20.0}),
+    ("drain_km2 <=50", {"src": "drain_km2", "log1p": True, "cap": 50.0}),
+    ("drain_km2 <=200", {"src": "drain_km2", "log1p": True, "cap": 200.0}),
     ("confine_median", {"cap": 60.0}),
     ("confine_max", {"cap": 60.0}),
     ("top_m", {"cap": 900.0}),
@@ -40,7 +48,7 @@ FOLDS = 5
 
 
 def column(rows: list[dict], name: str, spec: dict) -> np.ndarray:
-    v = np.array([float(r[name]) for r in rows])
+    v = np.array([float(r[spec.get("src", name)]) for r in rows])
     if "cap" in spec:
         v = np.minimum(v, spec["cap"])
     if spec.get("log1p"):
@@ -101,13 +109,19 @@ def main() -> None:
     print("\nforward selection:")
     while len(chosen) < a.max_features:
         options = []
+        taken = {s.get("src", n) for n, s in chosen}
         for name, spec in CANDIDATES:
-            if any(n == name for n, _ in chosen):
+            if spec.get("src", name) in taken:
                 continue
             trial = chosen + [(name, spec)]
             X = np.column_stack([column(rows, n, s)[train] for n, s in trial])
             options.append((cv_auc(X, y), name, spec))
-        options.sort(reverse=True, key=lambda o: o[0])
+        # AUC to three places, then the tightest cap. Averaged over 11,542
+        # groups, AUC cannot tell a cap of 50 km² from 200, but the looser one
+        # fills the top of the list with major rivers carrying no gradient — so
+        # under a tie, take the model that claims less.
+        options.sort(reverse=True, key=lambda o: (round(o[0], 3),
+                                                  -o[2].get("cap", 0.0)))
         gain = options[0][0] - best_auc
         if gain < 0.002:
             print(f"  stop: best addition {options[0][1]} gains only {gain:+.3f}")
@@ -181,7 +195,8 @@ def main() -> None:
               f"conf {r['confine_median']:3.0f} m · {r['lat']:.4f},{r['lon']:.4f}")
 
     (a.out / "group-score.json").write_text(json.dumps({
-        "transform": [{"name": n, **s} for n, s in chosen],
+        "transform": [{**{k: v for k, v in s.items() if k != "src"},
+                       "name": s.get("src", n)} for n, s in chosen],
         "mean": mu.tolist(),
         "sd": sd.tolist(),
         "weights": w.tolist(),

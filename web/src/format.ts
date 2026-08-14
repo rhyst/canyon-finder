@@ -5,6 +5,11 @@
 import type { Group } from './grouping.ts';
 import type { Candidate } from './types.ts';
 
+/** Drainage area, at a precision that suits its size. */
+export function fmtArea(km2: number): string {
+  return `${km2 < 10 ? km2.toFixed(1) : km2.toFixed(0)} km²`;
+}
+
 export interface Context {
   /** 0-1 against the logged canyons, or null when no model is loaded. */
   promise: number | null;
@@ -21,7 +26,7 @@ export function watercourseLine(group: Group, ctx: Context): string {
   const logged = ctx.logged ? '<span class="tag mini">logged</span> · ' : '';
   if (n === 1) {
     const only = group.members[0];
-    return `${p}${logged}one reach · ${only.catchment.toFixed(1)} km upstream · ` +
+    return `${p}${logged}one reach · ${fmtArea(only.drain)} draining · ` +
       `${only.dem} DEM`;
   }
   return `${p}${logged}${n} reaches · ${group.steepDrop.toFixed(0)} m of drop in ` +
@@ -29,13 +34,13 @@ export function watercourseLine(group: Group, ctx: Context): string {
     `${group.spanDrop.toFixed(0)} m over a ${(group.spanLength / 1000).toFixed(2)} km span ` +
     `(${(group.spanDrop / group.spanLength * 100).toFixed(0)}% overall) · ` +
     `best ${(group.best.gradient * 100).toFixed(0)}% · ` +
-    `${group.features.catchment_km.toFixed(1)} km upstream`;
+    `${fmtArea(group.features.drain_km2)} draining`;
 }
 
 export function reachLine(c: Candidate): string {
   return `${(c.gradient * 100).toFixed(1)}% over ${c.length.toFixed(0)} m · ` +
     `${c.drop.toFixed(0)} m drop · steepest 100 m ${(c.steepest * 100).toFixed(0)}% · ` +
-    `${c.top.toFixed(0)}→${c.bottom.toFixed(0)} m · ${c.catchment.toFixed(1)} km upstream · ` +
+    `${c.top.toFixed(0)}→${c.bottom.toFixed(0)} m · ${fmtArea(c.drain)} draining · ` +
     `confinement ${c.confine.toFixed(0)} m · ${c.dem} DEM`;
 }
 
