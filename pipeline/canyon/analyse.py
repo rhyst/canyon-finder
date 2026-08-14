@@ -26,8 +26,8 @@ GRADED = {"Basic", "Moderate", "Advanced"}
 REJECTED = {"0 Stars"}  # visited, found not worth it
 CONFINE_CAP = 60.0
 FEATURES = ["gradient", "steepest_100m", "steepest_step", "steep_fraction",
-            "step_variation", "catchment_km", "top_m", "drop", "length",
-            "confine_50m", "confine_100m", "confine_200m"]
+            "step_variation", "catchment_km", "drain_km2", "top_m", "drop",
+            "length", "confine_50m", "confine_100m", "confine_200m"]
 
 
 def auc(pos: np.ndarray, neg: np.ndarray) -> float:
@@ -44,12 +44,21 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--out", type=Path, default=root / "web" / "public" / "data")
     p.add_argument("--raw", type=Path, default=root / "data" / "raw")
+    p.add_argument("--work", type=Path, default=root / "data" / "work")
     p.add_argument("--min-gradient", type=float, default=0.08,
                    help="floor for the background candidate pool")
     a = p.parse_args()
 
     meta, z_all, up_all, conf_all, dlon, dlat, total, spacing = load_payload(a.out)
     logged = json.loads((a.out / "known.json").read_text())["canyons"]
+    # Drainage area is optional: canyon.watershed is a separate national pass.
+    ws = a.work / "watershed.npz"
+    drain_all = np.load(ws)["area"] if ws.exists() else None
+    if drain_all is None:
+        print(f"no {ws.name}; drainage area will read zero "
+              f"(run python -m canyon.watershed)")
+    elif len(drain_all) != total:
+        raise SystemExit(f"{ws} has {len(drain_all)} samples, payload has {total}")
     dem = Terrain50.load(a.raw / "terr50", set(SQUARES),
                          cache=a.raw.parent / "work" / "terr50.npz")
     to_bng = Transformer.from_crs(4326, 27700, always_xy=True)
@@ -79,6 +88,7 @@ def main() -> None:
         s = slice(c["o"], c["o"] + c["n"])
         zc = z_all[s].astype(np.float64) / 10
         upc = up_all[s].astype(np.float64) / 10
+        dr = drain_all[s] if drain_all is not None else None
         lon, lat = chain_lonlat(c, dlon, dlat)
         x, y = to_bng.transform(lon, lat)
         # 100 m is the radius that ships, so it comes from the payload — the same
@@ -90,7 +100,8 @@ def main() -> None:
         conf[CONFINE_RADIUS] = conf_all[s].astype(np.float64)
 
         for k, group in labels.get(ci, ()):
-            rows[group].append(reach_features(zc, upc, conf, k["i"], k["j"], spacing))
+            rows[group].append(
+                reach_features(zc, upc, conf, k["i"], k["j"], spacing, dr))
 
         # Background: the steepest non-overlapping 200-600 m reaches on this chain.
         i = 0
@@ -103,7 +114,8 @@ def main() -> None:
             if best is None:
                 i += 1
                 continue
-            rows["background"].append(reach_features(zc, upc, conf, i, i + best[0], spacing))
+            rows["background"].append(
+                reach_features(zc, upc, conf, i, i + best[0], spacing, dr))
             i += best[0]
 
     for name, r in rows.items():
@@ -152,6 +164,7 @@ def main() -> None:
         print(f"{name:32} {keep_g * 100:9.0f}% {keep_r * 100:10.0f}% "
               f"{pool:8,} ({pool / n_bg * 100:3.0f}%) {sift:14.0f}")
 
+    compare_water(arrays)
     fit_score(arrays, a.out)
 
 
@@ -167,14 +180,54 @@ def logistic(X: np.ndarray, y: np.ndarray, iters: int = 40) -> np.ndarray:
     return w
 
 
-def design(arrays: dict[str, dict[str, np.ndarray]], group: str,
-           cap: float) -> np.ndarray:
+def design(arrays: dict[str, dict[str, np.ndarray]], group: str, cap: float,
+           water: str = "catchment_km") -> np.ndarray:
     d = arrays[group]
     return np.column_stack([
         d["gradient"],
-        np.log1p(np.clip(d["catchment_km"], 0, cap)),
+        np.log1p(np.clip(d[water], 0, cap)),
         np.clip(d["confine_100m"], 0, CONFINE_CAP),
     ])
+
+
+# Caps worth trying for each way of measuring how much water a reach carries.
+WATER_CAPS = {
+    "catchment_km": (10, 20, 30, 50, 100, 1e6),
+    "drain_km2": (5, 20, 50, 200, 1000, 1e6),
+}
+
+
+def compare_water(arrays: dict[str, dict[str, np.ndarray]]) -> None:
+    """Fit the same score on channel length and on drainage area, side by side.
+
+    Channel length is a proxy for how much water a reach carries, and a poor one
+    at a headwater. Drainage area is the real quantity. This says whether
+    swapping them is worth the payload change, since the browser cannot score on
+    a feature it does not carry.
+    """
+    if not arrays["graded"]["drain_km2"].any():
+        return
+    print("\nchannel length against drainage area, same fit:")
+    print(f"  {'water feature':16} {'best cap':>9} {'AUC vs bg':>10} "
+          f"{'AUC vs 0-star':>14} {'top-2% graded':>14}")
+    for water, caps in WATER_CAPS.items():
+        best = None
+        for cap in caps:
+            pos, bg, rej = (design(arrays, g, cap, water)
+                            for g in ("graded", "background", "rejected"))
+            mu, sd = bg.mean(axis=0), bg.std(axis=0)
+            Xp, Xb, Xr = ((M - mu) / sd for M in (pos, bg, rej))
+            X = np.column_stack([np.ones(len(Xp) + len(Xb)), np.vstack([Xp, Xb])])
+            w = logistic(X, np.concatenate([np.ones(len(Xp)), np.zeros(len(Xb))]))
+            score = lambda M: np.column_stack([np.ones(len(M)), M]) @ w
+            sp, sb, sr = score(Xp), score(Xb), score(Xr)
+            row = (round(auc(sp, sr), 3), auc(sp, sb), cap,
+                   (sp >= np.quantile(sb, 0.98)).mean())
+            if best is None or row > best:
+                best = row
+        a_rej, a_bg, cap, top = best
+        print(f"  {water:16} {cap:9,.0f} {a_bg:10.3f} {a_rej:14.3f} "
+              f"{top * 100:13.0f}%")
 
 
 def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path) -> None:

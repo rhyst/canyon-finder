@@ -48,7 +48,8 @@ def confinement(sample: Sampler, x: np.ndarray, y: np.ndarray, z: np.ndarray,
 
 
 def reach_features(z: np.ndarray, up: np.ndarray, conf: dict[float, np.ndarray],
-                   i: int, j: int, spacing: float) -> dict[str, float]:
+                   i: int, j: int, spacing: float,
+                   drain: np.ndarray | None = None) -> dict[str, float]:
     """Summarise the reach [i, j] of a chain."""
     seg = z[i: j + 1]
     length = (j - i) * spacing
@@ -70,6 +71,8 @@ def reach_features(z: np.ndarray, up: np.ndarray, conf: dict[float, np.ndarray],
         "catchment_km": float(up[i]),
         "top_m": float(seg[0]),
         "bottom_m": float(seg[-1]),
+        # Both read at the head, where the water entering the reach is least.
+        "drain_km2": float(drain[i]) if drain is not None else 0.0,
     }
     # Window mean, matching search.ts. The browser filters and scores off a
     # prefix-sum mean, which is what makes the confinement slider free, so the
