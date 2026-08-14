@@ -17,9 +17,9 @@ from pathlib import Path
 import numpy as np
 from pyproj import Transformer
 
-from .build import SQUARES
+from .build import CONFINE_RADIUS, SQUARES
 from .dem import Terrain50
-from .features import confinement, reach_features
+from .features import RADII, confinement, reach_features
 from .refine import chain_lonlat, load_payload
 
 GRADED = {"Basic", "Moderate", "Advanced"}
@@ -81,8 +81,13 @@ def main() -> None:
         upc = up_all[s].astype(np.float64) / 10
         lon, lat = chain_lonlat(c, dlon, dlat)
         x, y = to_bng.transform(lon, lat)
+        # 100 m is the radius that ships, so it comes from the payload — the same
+        # bytes the browser scores on, LiDAR where a chain was refined. The other
+        # radii are diagnostic only and are re-measured off Terrain 50.
+        other = [r for r in RADII if r != CONFINE_RADIUS]
         conf = {r: np.nan_to_num(v) for r, v in
-                confinement(dem.sample, np.asarray(x), np.asarray(y), zc).items()}
+                confinement(dem.sample, np.asarray(x), np.asarray(y), zc, other).items()}
+        conf[CONFINE_RADIUS] = conf_all[s].astype(np.float64)
 
         for k, group in labels.get(ci, ()):
             rows[group].append(reach_features(zc, upc, conf, k["i"], k["j"], spacing))
