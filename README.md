@@ -349,23 +349,32 @@ river network into a 100 m grid, priority-floods every depression and flat so ea
 a downhill path to the sea, then accumulates D8 flow — one national pass, about a minute and
 1.6 GB, giving a drainage area at all 1.98M profile samples. The blind spot closes: Allt an
 Earrochd reads 1.2 km², High Grain 10.2 km², Allt Coire Sgamadail 2.1 km², none of which
-0.1 km of mapped channel could express. It lands within a few percent of published
-catchment areas:
+0.1 km of mapped channel could express.
 
-| river | measured | published |
-| --- | --- | --- |
-| Tay | 4,992 km² | ~4,600 |
-| Tweed | 4,419 km² | ~4,390 |
-| Spey | 2,950 km² | ~2,900 |
-| Dee | 2,077 km² | ~2,100 |
-| Clyde | 1,941 km² | ~1,900 |
-| Don | 1,320 km² | ~1,330 |
+**It is checked against every gauged catchment in the country.** The
+[NRFA station API](https://nrfaapps.ceh.ac.uk/nrfa/nrfa-api.html) publishes a measured
+catchment area and a grid reference for 1,601 stations, 424 of which fall inside the river
+network's extent, so the routed basin can be compared at a known point rather than against
+whole-river totals that depend on where a river stops carrying its name:
 
-Two things it is not: burned into the payload (it writes `data/work/watershed.npz`, so no
-feature uses it yet), and free of edge cases — a chain ending at a confluence shares its
-last 100 m cell with the river it joins, which read the trunk's whole basin until the tail
-of each chain was clamped. That clamp touches 1.4% of samples and a 50 m grid would shrink
-it.
+| gauged catchment | n | median ratio | within 10% | within 25% |
+| --- | --- | --- | --- | --- |
+| over 500 km² | 68 | 1.001 | 100% | 100% |
+| 50–500 km² | 249 | 1.006 | 95% | 98% |
+| 5–50 km² | 97 | 1.025 | 74% | 87% |
+| under 5 km² | 10 | 1.222 | 40% | 60% |
+| all | 424 | 1.006 | 90% | 95% |
+
+Accuracy falls off with catchment size, which is the honest caveat for the headwater case
+this was built for: a 1 km² basin is 100 cells at 100 m, so `--cell 50` is worth running if
+the small end matters. The station list caches to `data/work/`.
+
+Two known biases, both one-sided and both from cell size. A gauge at a tributary mouth can
+snap onto the river it joins — the Burn of Carron reads the Spey, 15 km² as 2,594 — which is
+the same artefact as a chain whose last 100 m cell is shared with the river below it. That
+second one is clamped at the tail of each chain, touching 1.4% of samples.
+
+Nothing consumes the result yet: it writes `data/work/watershed.npz`.
 
 Note *max* confinement, not median: a canyon needs one enclosed section, not uniform
 enclosure. And max catchment, which lands at the foot of the descent where the water is

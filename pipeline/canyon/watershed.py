@@ -21,9 +21,11 @@ in the grid, so this is national or nothing.
 from __future__ import annotations
 
 import argparse
+import csv
 import heapq
 import math
 import time
+import urllib.request
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,15 +55,18 @@ CONFLUENCE_SLACK = 4.0
 
 OFFSETS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
-# Roughly the published catchment area of each river, km², as an order-of-
-# magnitude check that routing has not lost or invented a basin. Approximate
-# reference values only — a few percent of disagreement is expected from the
-# 100 m grid and from wherever a named watercourse stops being that name.
-REFERENCE_BASINS = {
-    "River Tay": 4600, "River Spey": 2900, "River Dee": 2100, "River Don": 1330,
-    "River Clyde": 1900, "River Tweed": 4390, "River Deveron": 1200,
-    "River Nith": 1230,
-}
+# Every gauged catchment in the UK, with a grid reference and a measured area.
+# This is the validation: 1,600 known answers at known points, rather than a
+# handful of basin totals that depend on where a river stops being that name.
+NRFA_STATIONS = ("https://nrfaapps.ceh.ac.uk/nrfa/ws/station-info"
+                 "?station=*&format=csv&fields=id,name,easting,northing,"
+                 "catchment-area")
+# A station's grid reference can sit a cell or two off the modelled channel, so
+# the comparison takes the largest basin within this many cells of it.
+SNAP_CELLS = 2
+# Gauged catchments smaller than this many cells are excluded from the
+# comparison: below a few dozen cells the disagreement measures the grid.
+MIN_GAUGED_CELLS = 25
 
 
 @dataclass
@@ -270,6 +275,105 @@ def sample_chains(grid: Grid, area: np.ndarray, meta: dict, dlon: np.ndarray,
     return out, held
 
 
+def gauged_catchments(cache: Path) -> list[tuple[str, float, float, float]]:
+    """Every NRFA gauging station as (name, easting, northing, area km²)."""
+    if not cache.exists():
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(NRFA_STATIONS, timeout=120) as resp:
+            cache.write_bytes(resp.read())
+    rows = []
+    for row in csv.DictReader(cache.read_text().splitlines()):
+        try:
+            rows.append((row["name"], float(row["easting"]),
+                         float(row["northing"]), float(row["catchment-area"])))
+        except (KeyError, TypeError, ValueError):
+            continue  # a station without a grid reference or a measured area
+    return rows
+
+
+def snap(area: np.ndarray, row: int, col: int) -> float | None:
+    """Largest basin within SNAP_CELLS of a point, or None if there is none.
+
+    A gauge's grid reference is only good to a cell or two, and the largest basin
+    nearby is the flow path it sits on. Two apparently better rules measured
+    worse: snapping to the nearest *rasterised* channel cell reads 0.01 km² on
+    the Dee, because a centreline cell need not be one the D8 path uses, and
+    preferring the smaller basin at a tie picks side channels over trunks.
+
+    The bias this leaves is one-sided and known: a gauge at a tributary mouth can
+    pick up the river it joins, which is why the Burn of Carron reads the Spey.
+    """
+    r0, r1 = max(0, row - SNAP_CELLS), row + SNAP_CELLS + 1
+    c0, c1 = max(0, col - SNAP_CELLS), col + SNAP_CELLS + 1
+    near = area[r0:r1, c0:c1]
+    return float(near.max()) if near.size and near.max() > 0 else None
+
+
+def validate(grid: Grid, area: np.ndarray, cache: Path) -> None:
+    """Compare the routed basin against every gauged catchment in the grid.
+
+    This is the check that matters: a measured area at a known grid reference,
+    1,600 times over, rather than a handful of whole-river totals that depend on
+    where a river stops carrying its name.
+    """
+    minx, miny, maxx, maxy = BBOX
+    floor = MIN_GAUGED_CELLS * grid.cell ** 2 / 1e6
+    got, want, names = [], [], []
+    outside = small = missed = 0
+    for name, east, north, published in gauged_catchments(cache):
+        # The river network was only read inside BBOX, so a station below it has
+        # nothing burned upstream and would report an empty basin. Northern
+        # England is in the DEM but not in the network.
+        if not (minx <= east <= maxx and miny <= north <= maxy):
+            outside += 1
+            continue
+        # Moor House runs gauges on sub-hectare plots. A 100 m cell cannot hold
+        # a 0.1 km² catchment, so comparing against one measures the grid, not
+        # the routing.
+        if published < floor:
+            small += 1
+            continue
+        row, col = grid.index(np.array([east]), np.array([north]))
+        if row[0] < 0:
+            outside += 1
+            continue
+        hit = snap(area, int(row[0]), int(col[0]))
+        if hit is None:
+            missed += 1
+            continue
+        got.append(hit)
+        want.append(published)
+        names.append(name)
+
+    got, want = np.array(got), np.array(want)
+    if not len(got):
+        print("\nno gauged catchments inside the grid")
+        return
+    ratio = got / want
+    print(f"\nagainst {len(got):,} gauged catchments (NRFA): "
+          f"{outside:,} outside the network extent, {small:,} below "
+          f"{floor:g} km2, {missed:,} with no routed basin within "
+          f"{SNAP_CELLS} cells")
+    print(f"  {'catchment':>16} {'n':>5} {'median ratio':>13} {'within 10%':>11} "
+          f"{'within 25%':>11}")
+    bands = [(0.0, 5.0, "under 5 km2"), (5.0, 50.0, "5-50 km2"),
+             (50.0, 500.0, "50-500 km2"), (500.0, np.inf, "over 500 km2"),
+             (0.0, np.inf, "all")]
+    for lo, hi, label in bands:
+        m = (want >= lo) & (want < hi)
+        if not m.any():
+            continue
+        r = ratio[m]
+        print(f"  {label:>16} {m.sum():5,} {np.median(r):13.3f} "
+              f"{np.mean(np.abs(r - 1) < 0.10) * 100:10.0f}% "
+              f"{np.mean(np.abs(r - 1) < 0.25) * 100:10.0f}%")
+    order = np.argsort(-np.abs(np.log(ratio)))
+    print("  worst disagreements:")
+    for i in order[:5]:
+        print(f"    {names[i][:34]:35} routed {got[i]:8,.1f}  "
+              f"gauged {want[i]:8,.1f}  x{ratio[i]:.2f}")
+
+
 def report(meta: dict, up: np.ndarray, drain: np.ndarray) -> None:
     """Drainage area against the channel length it is meant to replace."""
     length = up.astype(np.float64) / 10
@@ -282,22 +386,6 @@ def report(meta: dict, up: np.ndarray, drain: np.ndarray) -> None:
     both = ok & (length > 0)
     print(f"  log correlation with upstream channel length: "
           f"{np.corrcoef(np.log1p(length[both]), np.log1p(drain[both]))[0, 1]:.3f}")
-
-    largest: dict[str, float] = {}
-    for c in meta["chains"]:
-        s = slice(c["o"], c["o"] + c["n"])
-        peak = float(drain[s].max())
-        for n in {c["name"]} | {n for _, n in c["runs"] if n}:
-            if peak > largest.get(n, 0.0):
-                largest[n] = peak
-    print(f"\nagainst published catchment areas:\n  {'river':18} "
-          f"{'measured':>9} {'published':>10} {'ratio':>6}")
-    for name, published in REFERENCE_BASINS.items():
-        got = largest.get(name)
-        if got is None:
-            print(f"  {name:18} {'not in payload':>20}")
-            continue
-        print(f"  {name:18} {got:9,.0f} {published:10,} {got / published:6.2f}")
 
     # The headwaters canyon.rank ranks worst: channel length reads blind there,
     # so what matters is whether area does not.
@@ -399,6 +487,8 @@ def main() -> None:
     area = flat.reshape(grid.z.shape)
     print(f"accumulated, largest basin {area.max():,.0f} km2 "
           f"({time.time() - t0:.0f}s)", flush=True)
+
+    validate(grid, area, a.work / "nrfa_stations.csv")
 
     meta, z, up, conf, dlon, dlat, total, spacing = load_payload(a.out)
     drain, held = sample_chains(grid, area, meta, dlon, dlat, total)
