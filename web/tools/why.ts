@@ -52,7 +52,8 @@ for (const { c, i } of chains) {
 
 const loose: Query = {
   sort: 'score', minGradient: 0.05, maxGradient: 1, minLength: 100, maxLength: 2000,
-  minCatchment: 0, maxCatchment: Infinity, minConfine: 0, minAltitude: 0,
+  minDrain: 0, maxDrain: Infinity, minCatchment: 0, maxCatchment: Infinity,
+  minConfine: 0, minAltitude: 0,
 };
 const all = search(loose);
 const mine = all.candidates.filter((c) => c.name === name);
@@ -87,8 +88,10 @@ for (const [key, p] of Object.entries(PRESETS)) {
     maxGradient: Number(p.maxGrad) / 100,
     minLength: Number(p.minLen),
     maxLength: Number(p.maxLen),
-    minCatchment: Number(p.minCatch),
-    maxCatchment: p.maxCatch === undefined ? Infinity : Number(p.maxCatch),
+    minDrain: Number(p.minDrain),
+    maxDrain: Number(p.maxDrain) >= 200 ? Infinity : Number(p.maxDrain),
+    minCatchment: 0,
+    maxCatchment: Infinity,
     minConfine: Number(p.minConf),
     minAltitude: Number(p.minAlt),
   };
@@ -97,7 +100,7 @@ for (const [key, p] of Object.entries(PRESETS)) {
   if (at < 0) {
     // Say which filter did it, by relaxing one at a time.
     const relax: [string, Partial<Query>][] = [
-      ['catchment', { minCatchment: 0 }],
+      ['drainage', { minDrain: 0, maxDrain: Infinity }],
       ['gradient', { minGradient: 0 }],
       ['length', { minLength: 25, maxLength: 5000 }],
       ['confinement', { minConfine: 0 }],

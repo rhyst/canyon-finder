@@ -23,7 +23,7 @@ export interface Payload {
 
 export type SortKey =
   | 'promise' | 'score' | 'drop' | 'gradient' | 'steepest' | 'length'
-  | 'catchment' | 'confine';
+  | 'drain' | 'confine';
 
 /** Logistic fit of graded canyons vs background, from canyon.analyse. */
 export interface ScoreModel {
@@ -42,8 +42,13 @@ export interface Query {
   maxGradient: number;
   minLength: number;
   maxLength: number;
+  /** Drainage area floor, in km². This is what the UI exposes. */
+  minDrain: number;
+  /** Drainage area ceiling, in km². Infinity for no limit. */
+  maxDrain: number;
+  /** Upstream channel length bounds, in km. Kept so the two ways of measuring
+   * how much water a reach carries stay comparable — see tools/thresholds.ts. */
   minCatchment: number;
-  /** Upstream channel length ceiling, in km. Infinity for no limit. */
   maxCatchment: number;
   minConfine: number;
   minAltitude: number;

@@ -91,8 +91,8 @@ let ready = false;
 const empty = { type: 'FeatureCollection', features: [] } as const;
 // Within this distance a candidate is the same water as a logged entry.
 const LOGGED_RADIUS = 250;
-// Top of the max-catchment slider means "no ceiling" rather than 100 km.
-const CATCH_NO_LIMIT = 100;
+// Top of the drainage ceiling slider means "no ceiling" rather than 200 km2.
+const DRAIN_NO_LIMIT = 200;
 
 map.on('load', () => {
   map.addSource('reaches', { type: 'geojson', data: empty as never });
@@ -314,10 +314,10 @@ function readQuery(): Query {
 
   el('gradOut').textContent = `${(minGrad * 100).toFixed(0)}–${(maxGrad * 100).toFixed(0)}%`;
   el('lenOut').textContent = `${minLen}–${maxLen} m`;
-  const maxCatch = num('maxCatch');
-  el('catchOut').textContent = maxCatch >= CATCH_NO_LIMIT
-    ? `${num('minCatch')} km +`
-    : `${num('minCatch')}–${maxCatch} km`;
+  const maxDrain = num('maxDrain');
+  el('drainOut').textContent = maxDrain >= DRAIN_NO_LIMIT
+    ? `${num('minDrain')} km² +`
+    : `${num('minDrain')}–${maxDrain} km²`;
   el('confOut').textContent = `${num('minConf')} m`;
   el('altOut').textContent = `${num('minAlt')} m`;
 
@@ -326,8 +326,12 @@ function readQuery(): Query {
     maxGradient: maxGrad,
     minLength: minLen,
     maxLength: maxLen,
-    minCatchment: num('minCatch'),
-    maxCatchment: maxCatch >= CATCH_NO_LIMIT ? Infinity : maxCatch,
+    minDrain: num('minDrain'),
+    maxDrain: maxDrain >= DRAIN_NO_LIMIT ? Infinity : maxDrain,
+    // The channel-length bound stays in the engine for tools/thresholds.ts to
+    // measure against; the UI does not expose it.
+    minCatchment: 0,
+    maxCatchment: Infinity,
     minConfine: num('minConf'),
     minAltitude: num('minAlt'),
     sort: el<HTMLSelectElement>('sort').value as SortKey,

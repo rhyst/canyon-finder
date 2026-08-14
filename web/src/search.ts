@@ -119,10 +119,12 @@ function bestWindow(o: number, from: number, to: number, q: Query,
   const gradient = (i: number, j: number) =>
     (z[o + i] - z[o + j]) / ((j - i) * sp * 10);
   const startOk = (i: number) =>
-    up[o + i] / 10 >= q.minCatchment && z[o + i] / 10 >= q.minAltitude;
-  // Upstream length only grows downstream, so testing the foot of a window
+    drain[o + i] >= q.minDrain && up[o + i] / 10 >= q.minCatchment
+    && z[o + i] / 10 >= q.minAltitude;
+  // Both measures of water only grow downstream, so testing the foot of a window
   // bounds the whole of it.
-  const smallEnough = (j: number) => up[o + j] / 10 <= q.maxCatchment;
+  const smallEnough = (j: number) =>
+    drain[o + j] <= q.maxDrain && up[o + j] / 10 <= q.maxCatchment;
 
   let peak = -1;
   let pi = -1;

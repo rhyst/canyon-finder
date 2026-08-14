@@ -29,6 +29,8 @@ const query = (q: Partial<Query> = {}): Query => ({
   maxGradient: 1,
   minLength: 200,
   maxLength: 1200,
+  minDrain: 0,
+  maxDrain: Infinity,
   minCatchment: 0,
   maxCatchment: Infinity,
   minConfine: 0,
@@ -141,26 +143,31 @@ check('coordinates decode to plausible Scottish positions', () => {
   }
 });
 
-check('catchment filters work at both ends', () => {
-  const big = search(query({ minCatchment: 20 }));
+check('drainage filters work at both ends', () => {
+  const big = search(query({ minDrain: 20 }));
   assert.ok(big.candidates.length > 0, 'no big-water reaches at all');
-  for (const c of big.candidates) assert.ok(c.catchment >= 20, `${c.catchment}`);
+  for (const c of big.candidates) assert.ok(c.drain >= 20, `${c.drain} km2`);
 
-  // A ceiling has to hold at the foot of a reach, not just its head: upstream
-  // length grows downstream, so the head is the smallest figure on it.
-  const small = search(query({ maxCatchment: 5 }));
+  // A ceiling has to hold at the foot of a reach, not just its head: drainage
+  // area grows downstream, so the head is the smallest figure on it.
+  const small = search(query({ maxDrain: 5 }));
   assert.ok(small.candidates.length > 0, 'no small-water reaches at all');
   for (const c of small.candidates) {
-    const foot = profile(c.chain, c.i, c.j);
-    assert.ok(c.catchment <= 5, `head ${c.catchment} km over the 5 km ceiling`);
-    assert.ok(foot.length > 0);
+    assert.ok(c.drain <= 5, `head ${c.drain} km2 over the 5 km2 ceiling`);
+    assert.ok(profile(c.chain, c.i, c.j).length > 0);
   }
-  const window = search(query({ minCatchment: 2, maxCatchment: 8 }));
+  const window = search(query({ minDrain: 2, maxDrain: 8 }));
   for (const c of window.candidates) {
-    assert.ok(c.catchment >= 2 && c.catchment <= 8, `${c.catchment} outside 2-8 km`);
+    assert.ok(c.drain >= 2 && c.drain <= 8, `${c.drain} outside 2-8 km2`);
   }
-  console.log(`      reaches at 20 km+: ${big.candidates.length}, ` +
-    `under 5 km: ${small.candidates.length}, 2-8 km: ${window.candidates.length}`);
+  console.log(`      reaches at 20 km2+: ${big.candidates.length}, ` +
+    `under 5: ${small.candidates.length}, 2-8: ${window.candidates.length}`);
+
+  // The channel-length bound stays in the engine, unexposed, so the two ways of
+  // measuring water can be compared — tools/thresholds.ts relies on it.
+  const byChannel = search(query({ minCatchment: 20 }));
+  assert.ok(byChannel.candidates.length > 0, 'the channel bound stopped working');
+  for (const c of byChannel.candidates) assert.ok(c.catchment >= 20, `${c.catchment}`);
 });
 
 const logged: KnownCanyon[] = JSON.parse(
@@ -214,7 +221,7 @@ check('the prospect score ranks logged canyons above the pool', () => {
 /* ---------- results list model ---------- */
 
 check('every reach on the map resolves to a row in the list', () => {
-  const q = query({ minGradient: 0.12, minLength: 200, maxLength: 600, minCatchment: 3 });
+  const q = query({ minGradient: 0.12, minLength: 200, maxLength: 600, minDrain: 4 });
   const list = search(q).candidates;
   const groups = buildGroups(list, 'score', meta.spacing);
 
@@ -346,9 +353,9 @@ check('a looser query never shows fewer watercourses than a stricter one', () =>
   const shown = (q: Query) =>
     buildGroups(search(q).candidates, q.sort, meta.spacing, groupModel).length;
   const strict = query({ sort: 'promise', minGradient: 0.12, minLength: 200,
-    maxLength: 600, minCatchment: 3 });
+    maxLength: 600, minDrain: 4 });
   const loose = query({ sort: 'promise', minGradient: 0.08, minLength: 200,
-    maxLength: 2000, minCatchment: 1 });
+    maxLength: 2000, minDrain: 1 });
   const [a, b] = [shown(strict), shown(loose)];
   console.log(`      calibrated shows ${a} watercourses, wide net ${b}`);
   assert.ok(b >= a, `wide net shows ${b} but calibrated shows ${a}`);
@@ -406,8 +413,8 @@ check('the logged-canyon count responds to every filter', () => {
 
   const readings: [string, number][] = [
     ['no filters', count(base)],
-    ['catchment >= 5 km', count({ ...base, minCatchment: 5 })],
-    ['catchment <= 5 km', count({ ...base, maxCatchment: 5 })],
+    ['drainage >= 5 km2', count({ ...base, minDrain: 5 })],
+    ['drainage <= 5 km2', count({ ...base, maxDrain: 5 })],
     ['confinement >= 20 m', count({ ...base, minConfine: 20 })],
     ['altitude >= 300 m', count({ ...base, minAltitude: 300 })],
     ['gradient >= 25%', count({ ...base, minGradient: 0.25 })],

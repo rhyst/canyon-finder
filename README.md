@@ -119,7 +119,7 @@ Nothing sets it directly — it is emergent, and the length sliders only bound i
 
 1. Every sample sits on a fixed 25 m grid, so all lengths are multiples of 25 m.
 2. The search finds the **steepest window** whose length falls inside your min/max band and
-   which passes the catchment, altitude and confinement filters.
+   which passes the drainage, altitude and confinement filters.
 3. That window then **grows outwards**, one sample at a time, while the whole reach still
    averages at least 80% of its peak gradient (`SHOULDER` in `search.ts`) and never drops
    below your minimum. Growth stops at your maximum length.
@@ -148,43 +148,58 @@ shortlist, 380 hold a single reach and just 37 hold four or more.
 `node --experimental-strip-types tools/why.ts "Some Burn"` explains where any watercourse
 sits: its reaches, the true steepest window on the chain, and its rank under each preset.
 
-**Presets** set every slider at once, from the analysis rather than from taste:
+**Presets** set every slider at once, from measurement rather than from taste. Every figure
+below comes from `node --experimental-strip-types tools/thresholds.ts`, which runs the app's
+own search and counts a descent as caught when a returned reach overlaps it:
 
-| preset | gradient | length | catchment | confinement | sort | graded canyons in band |
-| --- | --- | --- | --- | --- | --- | --- |
-| Calibrated shortlist | ≥12% | 200–600 m | ≥3 km | — | score | 62/91 |
-| Wide net — prospecting | ≥8% | 200–2000 m | ≥1 km | — | score | 81/91 |
-| Big water | ≥10% | 200–1200 m | ≥8 km | — | score | 75/91 |
-| Tight gorge | ≥12% | 200–800 m | ≥2 km | ≥20 m | confinement | 64/91 |
-| Waterfall hunting | ≥20% | 100–300 m | ≥2 km | — | steepest 100 m | 30/91 |
-| Steep small burns | ≥15% | 150–800 m | 0.5–6 km | — | total drop | 44/91 |
-| Long descents | ≥8% | 1000–5000 m | ≥3 km | — | length | 2/91 |
+| preset | gradient | length | drainage | confinement | sort | logged caught | watercourses |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Calibrated shortlist | ≥12% | 200–600 m | ≥4 km² | — | promise | 55/91 | 1,132 |
+| Wide net — prospecting | ≥8% | 200–2000 m | ≥1 km² | — | promise | 81/91 | 7,422 |
+| Big water | ≥10% | 200–1200 m | ≥15 km² | — | promise | 16/91 | 185 |
+| Tight gorge | ≥12% | 200–800 m | ≥4 km² | ≥20 m | confinement | 24/91 | 350 |
+| Waterfall hunting | ≥20% | 100–300 m | ≥3 km² | — | steepest 100 m | 56/91 | 992 |
+| Steep small burns | ≥15% | 150–800 m | 1–12 km² | — | total drop | 54/91 | 3,662 |
+| Long descents | ≥8% | 1000–5000 m | ≥4 km² | — | length | 41/91 | 682 |
 
-Long descents catches almost no logged canyon because logged canyons are short (median
-250 m) — it is for finding sustained steep sections, not rediscovering venues. Steep small
-burns exists because every other preset carries a catchment floor of 2 km or more, which
-excludes genuinely steep small water: Allt Coire Sgamadail runs 28% over 175 m with a
-34% steepest-100 m, on 1.2 km of upstream channel, so only this preset and the wide net
-reach it. It sorts by drop rather than promise, since promise underrates headwaters.
+Each floor is the largest that holds the preset's recall — measured, then kept. Every one of
+them does at least as well as the channel-length bound it replaced, and several do better:
+big water went from 257 watercourses to 185 for the same 16, and small burns from 3,920 to
+3,662 while catching 54 rather than 47.
 
-**A catchment ceiling costs recall, so it is worth knowing the price.** Upstream length has
-a maximum as well as a minimum, since a 600 km river is not what most people mean by a
-canyon. But big water hosts real descents — Bruar sits on 49 km, Falls of Foyers on 182 km —
-so the ceiling trades them away (measured at ≥12% over 200–600 m, no minimum):
+**The recall column used to be wrong, in the way this README warns against elsewhere.** It
+read 62/81/75/64/30/44/2, computed by testing each logged canyon's stored gradient and length
+against the sliders — which ignores every other filter. Measured properly, big water catches
+16 rather than 75, and long descents 41 rather than 2. Long descents was described here as
+catching almost nothing because logged canyons are short; in fact a 1 km reach comfortably
+overlaps a 250 m descent, so it catches plenty. It is still the preset for sustained steep
+channel rather than for rediscovering venues, but not for the reason given.
+
+Steep small burns exists because the other presets' floors exclude genuinely steep small
+water: Allt Coire Sgamadail runs 28% over 175 m on under 2 km² of drainage, so only this
+preset and the wide net reach it — `why.ts` confirms the other five reject it on the drainage
+filter. Its floor sits at 1 km² for that reason. It sorts by drop rather than promise, since
+little water is little water however it is measured.
+
+**A drainage ceiling costs recall, so it is worth knowing the price.** The area has a maximum
+as well as a minimum, since a 2,000 km² river is not what most people mean by a canyon. But
+big water hosts real descents — Bruar drains 72 km² — so the ceiling trades them away
+(measured at ≥12% over 200–600 m, no floor):
 
 | ceiling | graded canyons still reachable |
 | --- | --- |
-| 3 km | 27 of 91 |
-| 6 km | 54 of 91 |
-| 10 km | 63 of 91 |
-| 20 km | 69 of 91 |
-| 30 km | 73 of 91 |
+| 1 km² | 4 of 91 |
+| 2 km² | 9 of 91 |
+| 5 km² | 31 of 91 |
+| 10 km² | 57 of 91 |
+| 20 km² | 64 of 91 |
+| 50 km² | 72 of 91 |
 | none | 76 of 91 |
 
-The slider's top position means no ceiling rather than 100 km. Only the small-burns preset
-sets one (6 km), since that is the point of it.
+The slider's top position means no ceiling rather than 200 km². Only the small-burns preset
+sets one (12 km²), since that is the point of it.
 
-The bound is tested at the *foot* of a reach, not its head: upstream length grows downstream,
+The bound is tested at the *foot* of a reach, not its head: drainage area grows downstream,
 so the head carries the smallest figure and testing it there would let a reach spill into
 bigger water than asked for.
 
@@ -210,11 +225,12 @@ A test asserts a looser query never shows fewer watercourses and that its reache
 stricter query's, compared by channel position rather than name — a longer maxLength can grow
 a reach upstream past a name change, relabelling a group without losing any water.
 
-Alongside the presets you can filter on gradient, length, upstream channel length (both
-ends — a ceiling keeps major rivers out), valley confinement and altitude, and sort by **promise** (the default, shown on every group row),
-total drop, gradient, steepest 100 m, length, catchment or confinement. Rows report the
-**drainage area** rather than channel length, since that is what the ranking now uses; the
-sliders still filter on channel length. Promise is the only
+Alongside the presets you can filter on gradient, length, **drainage area** (both ends — a
+ceiling keeps major rivers out), valley confinement and altitude, and sort by **promise** (the
+default, shown on every group row), total drop, gradient, steepest 100 m, length, drainage or
+confinement. Upstream channel length is still carried in the payload and still filterable by
+the search engine, but the UI no longer exposes it: `tools/thresholds.ts` uses it to keep the
+two ways of measuring water comparable. Promise is the only
 score the UI exposes; the reach-level fit from `canyon.analyse` survives as the internal
 tie-breaker deciding which reaches survive the result cap, and as the evidence for which
 features matter. **Hide logged** drops watercourses within 250 m of
@@ -247,7 +263,7 @@ The app draws them as dashed lines — **green** for a descent someone rated, **
 filters, so you can see what a threshold is throwing away. It counts graded descents only
 (catching a 0-star is not a virtue) and it counts *coverage*: a logged canyon is caught when
 the search returns a reach overlapping it. Testing each canyon's stored gradient and length
-against the sliders instead looks equivalent and is not — it ignores catchment, confinement
+against the sliders instead looks equivalent and is not — it ignores drainage, confinement
 and altitude, so the number sat still while those filters discarded canyons. Grey markers are the useful negative: a nearby
 candidate that looks like a dud someone already walked into deserves less of your weekend.
 The category strings live in `src/canyonlog.ts` and are asserted in the tests, since they
@@ -298,9 +314,14 @@ What filters cost, and how much sifting they save:
 | gradient ≥ 20% | 52% | 65% | 3,872 (14%) | 82 |
 | catchment ≥ 2 km | 77% | 53% | 5,348 (20%) | 76 |
 | catchment ≥ 5 km | 47% | **12%** | 1,543 (6%) | 36 |
+| drainage ≥ 4 km² | 74% | 47% | 4,245 (16%) | 63 |
+| drainage ≥ 10 km² | 33% | **6%** | 1,057 (4%) | 35 |
 | confinement ≥ 20 m | 26% | 6% | 2,641 (10%) | 110 |
-| gradient ≥ 10% & catchment ≥ 2 km | 60% | 47% | 1,545 (6%) | 28 |
-| gradient ≥ 15% & catchment ≥ 3 km | 36% | 24% | 280 (1%) | **8** |
+| gradient ≥ 12% & drainage ≥ 4 km² | 49% | 41% | 735 (3%) | 16 |
+| gradient ≥ 15% & drainage ≥ 4 km² | 40% | 29% | 389 (1%) | **11** |
+
+Drainage area is the better sieve as well as the better ranking feature: ≥4 km² keeps 74% of
+graded canyons at 63 candidates each where ≥2 km of channel keeps 77% at 76.
 
 A logistic fit on the three useful features (standardised weights: drainage area +1.06,
 gradient +0.87, confinement +0.26) scores **AUC 0.948** against background and 0.700 against

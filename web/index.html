@@ -47,11 +47,11 @@
         </label>
 
         <label class="range">
-          <span>Upstream watercourse <em>(water volume proxy)</em></span>
-          <output id="catchOut">2 km +</output>
+          <span>Drainage area <em>(how much land feeds it)</em></span>
+          <output id="drainOut">4 km² +</output>
           <div class="dual">
-            <input id="minCatch" type="range" min="0" max="50" step="0.5" value="2" />
-            <input id="maxCatch" type="range" min="1" max="100" step="1" value="100" />
+            <input id="minDrain" type="range" min="0" max="50" step="0.5" value="4" />
+            <input id="maxDrain" type="range" min="1" max="200" step="1" value="200" />
           </div>
         </label>
 
@@ -75,7 +75,7 @@
             <option value="gradient">Gradient</option>
             <option value="steepest">Steepest 100 m</option>
             <option value="length">Length</option>
-            <option value="catchment">Catchment</option>
+            <option value="drain">Drainage area</option>
             <option value="confine">Confinement</option>
           </select>
         </label>

@@ -135,19 +135,20 @@ def main() -> None:
         ("gradient >= 0.10", lambda d: d["gradient"] >= 0.10),
         ("gradient >= 0.15", lambda d: d["gradient"] >= 0.15),
         ("gradient >= 0.20", lambda d: d["gradient"] >= 0.20),
-        ("catchment >= 1 km", lambda d: d["catchment_km"] >= 1),
         ("catchment >= 2 km", lambda d: d["catchment_km"] >= 2),
         ("catchment >= 5 km", lambda d: d["catchment_km"] >= 5),
+        # The bound the sliders actually set. Paired with the channel-length rows
+        # above so the two ways of measuring water stay comparable.
+        ("drainage >= 1 km2", lambda d: d["drain_km2"] >= 1),
+        ("drainage >= 4 km2", lambda d: d["drain_km2"] >= 4),
+        ("drainage >= 10 km2", lambda d: d["drain_km2"] >= 10),
         ("confine_100m >= 10", lambda d: d["confine_100m"] >= 10),
         ("confine_100m >= 20", lambda d: d["confine_100m"] >= 20),
-        ("grad>=.10 & catch>=2", lambda d: (d["gradient"] >= 0.10) & (d["catchment_km"] >= 2)),
-        ("grad>=.12 & catch>=2", lambda d: (d["gradient"] >= 0.12) & (d["catchment_km"] >= 2)),
-        ("grad>=.12 & catch>=3", lambda d: (d["gradient"] >= 0.12) & (d["catchment_km"] >= 3)),
-        ("grad>=.15 & catch>=3", lambda d: (d["gradient"] >= 0.15) & (d["catchment_km"] >= 3)),
-        ("grad>=.10 & catch>=2 & conf>=10",
-         lambda d: (d["gradient"] >= 0.10) & (d["catchment_km"] >= 2) & (d["confine_100m"] >= 10)),
-        ("grad>=.12 & catch>=2 & conf>=10",
-         lambda d: (d["gradient"] >= 0.12) & (d["catchment_km"] >= 2) & (d["confine_100m"] >= 10)),
+        ("grad>=.10 & drain>=4", lambda d: (d["gradient"] >= 0.10) & (d["drain_km2"] >= 4)),
+        ("grad>=.12 & drain>=4", lambda d: (d["gradient"] >= 0.12) & (d["drain_km2"] >= 4)),
+        ("grad>=.15 & drain>=4", lambda d: (d["gradient"] >= 0.15) & (d["drain_km2"] >= 4)),
+        ("grad>=.12 & drain>=4 & conf>=10",
+         lambda d: (d["gradient"] >= 0.12) & (d["drain_km2"] >= 4) & (d["confine_100m"] >= 10)),
     ]
     n_bg = len(rows["background"])
     print(f"{'rule':32} {'graded kept':>11} {'0-star kept':>11} {'pool':>14} "
