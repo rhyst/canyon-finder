@@ -70,7 +70,10 @@ def build(raw: Path, out: Path, gpkg: Path, bbox: tuple[float, ...] = BBOX) -> N
     links = rivers.load_links(gpkg, bbox)
     print(f"  {len(links)} links, {sum(l.length for l in links) / 1000:,.0f} km", flush=True)
 
-    rivers.compute_upstream(links)
+    stranded = rivers.compute_upstream(links)
+    if stranded:
+        print(f"  {stranded} links inside a network cycle, broken in on the "
+              f"largest inflow", flush=True)
     chains = rivers.trace_chains(links)
     print(f"  {len(chains)} chains", flush=True)
 

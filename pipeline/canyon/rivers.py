@@ -94,8 +94,11 @@ def load_links(gpkg: Path, bbox: tuple[float, float, float, float]) -> list[Link
     return links
 
 
-def compute_upstream(links: list[Link]) -> None:
-    """Set upstream_km on each link: total watercourse length draining into its head."""
+def compute_upstream(links: list[Link]) -> int:
+    """Set upstream_km on each link: total watercourse length draining into its head.
+
+    Returns the number of links a cycle stopped Kahn's algorithm from resolving.
+    """
     by_end: dict[str, list[Link]] = defaultdict(list)
     for l in links:
         by_end[l.end].append(l)
@@ -103,6 +106,20 @@ def compute_upstream(links: list[Link]) -> None:
     by_start: dict[str, list[Link]] = defaultdict(list)
     for l in links:
         by_start[l.start].append(l)
+
+    # Where flow splits, the inherited total is divided between the branches, not
+    # handed to each of them. Handing it to each is what a plain accumulation
+    # does, and when the branches rejoin, the shared channel above them is counted
+    # once per path — which compounds: 502 split nodes took the Kyle of Sutherland
+    # to 2.7 million km upstream, 43x the whole Scottish network. Dividing keeps
+    # every downstream total exact, because the shares recombine at the confluence,
+    # and still gives a side channel a proportional figure rather than zero.
+    share: dict[str, float] = {}
+    for node, out in by_start.items():
+        span = sum(l.length for l in out)
+        for l in out:
+            share[l.id] = (l.length / span) if span else 1.0 / len(out)
+
     # Kahn's algorithm over links: a link is ready once every link feeding its
     # start node has been processed.
     pending = {l.id: len(by_end.get(l.start, ())) for l in links}
@@ -113,16 +130,40 @@ def compute_upstream(links: list[Link]) -> None:
         done += 1
         total = l.upstream_km + l.length / 1000.0
         for nxt in by_start.get(l.end, ()):
-            nxt.upstream_km += total
+            nxt.upstream_km += total * share[nxt.id]
             pending[nxt.id] -= 1
             if pending[nxt.id] == 0:
                 queue.append(nxt)
-    if done < len(links):
-        # Braided reaches and data loops leave a remainder; give them a floor so
-        # ranking still works.
-        for l in links:
-            if pending[l.id] > 0:
-                l.upstream_km = max(l.upstream_km, l.length / 1000.0)
+    if done == len(links):
+        return 0
+
+    # A braided reach or a digitising loop leaves a cycle, and Kahn's strands not
+    # just the cycle but everything below it. Break in on the largest inflow
+    # first: releasing the biggest contributor lets the rest resolve normally,
+    # rather than every stranded link falling back to its own length and reading
+    # as a headwater. Catchment is the strongest feature and the default sort, so
+    # a whole river system quietly ranking at zero is worth this much effort.
+    stuck = [l for l in links if pending[l.id] > 0]
+    for l in sorted(stuck, key=lambda l: (-l.upstream_km, l.id)):
+        if pending[l.id] <= 0:
+            continue  # released while the queue drained below
+        pending[l.id] = 0
+        queue = [l]
+        while queue:
+            cur = queue.pop()
+            done += 1
+            total = cur.upstream_km + cur.length / 1000.0
+            for nxt in by_start.get(cur.end, ()):
+                nxt.upstream_km += total * share[nxt.id]
+                pending[nxt.id] -= 1
+                if pending[nxt.id] == 0:
+                    queue.append(nxt)
+
+    # Anything still held is inside a cycle that the pass above could not open.
+    for l in links:
+        if pending[l.id] > 0:
+            l.upstream_km = max(l.upstream_km, l.length / 1000.0)
+    return len(stuck)
 
 
 def trace_chains(links: list[Link]) -> list[Chain]:
@@ -182,3 +223,45 @@ def resample(coords: np.ndarray, spacing: float) -> tuple[np.ndarray, np.ndarray
     x = np.interp(d, cum, coords[:, 0])
     y = np.interp(d, cum, coords[:, 1])
     return np.column_stack([x, y]), d
+
+
+def selftest() -> None:
+    """Accumulate over the two shapes that broke on real data.
+
+    Run as `python -m canyon.rivers`. A braid counted shared channel once per
+    downstream path and reached 43x the national network; a cycle stranded every
+    link below it, leaving 25 River Eden links reading as headwaters.
+    """
+    def link(lid, start, end, km):
+        return Link(lid, lid, start, end, np.zeros((2, 2)), km * 1000.0, "inlandRiver")
+
+    # A diamond: source -> a -> {b, c} -> d. The shared source must count once.
+    diamond = [link("s", "n0", "n1", 10), link("b", "n1", "n2", 1),
+               link("c", "n1", "n2", 2), link("d", "n2", "n3", 1)]
+    assert compute_upstream(diamond) == 0
+    got = {l.id: round(l.upstream_km, 3) for l in diamond}
+    # d sees all 13 km above it — the source plus both branches — and no more.
+    assert got["d"] == 13.0, got
+    # Each branch takes a share of the source rather than all of it or none.
+    assert got["b"] + got["c"] == 10.0, got
+    total = sum(l.length for l in diamond) / 1000
+    assert max(got.values()) <= total, f"{got} exceeds the {total} km network"
+
+    # A cycle, with real channel above it. Everything below must still resolve.
+    cycle = [link("feed", "m0", "m1", 100), link("x", "m1", "m2", 1),
+             link("y", "m2", "m1", 1), link("out", "m2", "m3", 1)]
+    stranded = compute_upstream(cycle)
+    assert stranded == 3, stranded
+    # The loop still costs the outlet something — the node cannot tell a spurious
+    # loop from a real braid, so it splits with it — but the water arrives instead
+    # of the outlet reading as a headwater, which is what it did before.
+    out = cycle[3].upstream_km
+    assert out > 50, f"link below the cycle reads {out} km of the 100 above it"
+
+    print("  diamond counts shared channel once")
+    print(f"  cycle strands {stranded} links; the outlet below still gets "
+          f"{out:.0f} of the 100 km above it, where it used to read 1")
+
+
+if __name__ == "__main__":
+    selftest()

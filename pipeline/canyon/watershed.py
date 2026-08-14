@@ -475,7 +475,9 @@ def main() -> None:
           f"{len(land):,} land cells ({time.time() - t0:.0f}s)", flush=True)
 
     links = rivers.load_links(a.rivers, BBOX)
-    rivers.compute_upstream(links)
+    stranded = rivers.compute_upstream(links)
+    if stranded:
+        print(f"  {stranded} links inside a network cycle", flush=True)
     print(f"burned {burn(grid, links):,} channel cells from {len(links):,} links "
           f"({time.time() - t0:.0f}s)", flush=True)
     del links
