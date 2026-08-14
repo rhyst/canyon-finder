@@ -11,7 +11,7 @@ import {
   type Group, type GroupModel,
 } from '../src/grouping.ts';
 import { GRADED, ZERO_STAR, covered, isDud, isGraded } from '../src/canyonlog.ts';
-import { reachLine, watercourseLine } from '../src/format.ts';
+import { esc, reachLine, safeUrl, watercourseLine } from '../src/format.ts';
 import type { Candidate, KnownCanyon, Payload, Query } from '../src/types.ts';
 
 const meta: Payload = JSON.parse(await readFile('public/data/profiles.json', 'utf8'));
@@ -405,6 +405,21 @@ check('the detail card renders real numbers for every watercourse', () => {
 });
 
 
+
+check('third-party strings cannot inject markup or a script url', () => {
+  // Canyon Log is someone else's CMS and the only input here nobody controls.
+  assert.equal(esc('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;');
+  assert.equal(esc(`"'&`), '&quot;&#39;&amp;');
+  assert.equal(safeUrl('javascript:alert(1)'), '', 'javascript: url survived');
+  assert.equal(safeUrl('data:text/html,<script>a</script>'), '', 'data: url survived');
+  assert.ok(safeUrl('https://canyonlog.org/x').startsWith('https://canyonlog.org/'));
+
+  // And the allowlist must not throw away the real links.
+  const dropped = logged.filter((k) => k.url && !safeUrl(k.url));
+  assert.equal(dropped.length, 0,
+    `${dropped.length} real Canyon Log urls rejected, e.g. ${dropped[0]?.url}`);
+  console.log(`      ${logged.filter((k) => k.url).length} logged urls all pass the allowlist`);
+});
 
 check('the logged-canyon count responds to every filter', () => {
   const graded = logged.filter(isGraded);

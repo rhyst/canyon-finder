@@ -5,6 +5,31 @@
 import type { Group } from './grouping.ts';
 import type { Candidate } from './types.ts';
 
+/**
+ * Escape text bound for innerHTML. Canyon Log's names, grades and categories come
+ * from someone else's CMS, so they are the one input here that nobody in this
+ * project controls.
+ */
+export function esc(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]!));
+}
+
+/**
+ * A link target from that same CMS, or '' if it is not plainly a web address.
+ * An allowlist rather than a blocklist: `javascript:` in an href runs on click,
+ * and there is no reason a Canyon Log entry needs any other scheme.
+ */
+export function safeUrl(url: string): string {
+  try {
+    const u = new URL(url, 'https://canyonlog.org');
+    return u.protocol === 'https:' || u.protocol === 'http:' ? esc(u.href) : '';
+  } catch {
+    return '';
+  }
+}
+
 /** Drainage area, at a precision that suits its size. */
 export function fmtArea(km2: number): string {
   return `${km2 < 10 ? km2.toFixed(1) : km2.toFixed(0)} km²`;

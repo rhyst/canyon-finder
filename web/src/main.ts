@@ -21,7 +21,7 @@ import {
   type Group, type GroupModel, type Row,
 } from './grouping';
 import { covered, isDud, isGraded } from './canyonlog';
-import { fmtArea, reachLine, watercourseLine } from './format';
+import { esc, fmtArea, reachLine, safeUrl, watercourseLine } from './format';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
@@ -573,21 +573,21 @@ function selectKnown(idx: number, fly: boolean) {
   const k = known[idx];
   if (!k) return;
   selected = -1;
-  const grade = k.grade ? `${k.grade} · ` : '';
+  const grade = k.grade ? `${esc(k.grade)} · ` : '';
   const dud = isDud(k);
   showDetail({
     coords: [k.coords],
-    title: `${k.name} <span class="tag${dud ? ' dud' : ''}">` +
+    title: `${esc(k.name)} <span class="tag${dud ? ' dud' : ''}">` +
       `${dud ? '0 stars' : 'logged'}</span>`,
-    stats: `${grade}${dud ? 'visited, reported not worth it' : k.category || 'ungraded'}` +
+    stats: `${grade}${dud ? 'visited, reported not worth it' : esc(k.category) || 'ungraded'}` +
       ` · measured ` +
       `${(k.gradient * 100).toFixed(1)}% over ${k.length.toFixed(0)} m ` +
-      `(${k.drop.toFixed(0)} m) on ${k.watercourse || 'an unnamed burn'}`,
+      `(${k.drop.toFixed(0)} m) on ${esc(k.watercourse) || 'an unnamed burn'}`,
     chain: k.chain,
     i: k.i,
     j: k.j,
-    extra: k.url
-      ? `<a target="_blank" rel="noreferrer" href="${k.url}">Canyon Log</a>`
+    extra: safeUrl(k.url)
+      ? `<a target="_blank" rel="noreferrer" href="${safeUrl(k.url)}">Canyon Log</a>`
       : '',
   }, fly);
 }
