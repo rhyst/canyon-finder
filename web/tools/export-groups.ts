@@ -18,7 +18,7 @@ const out = process.argv[2] ?? '../data/work/groups.json';
 // fit sees the positives rather than a pre-filtered slice of them.
 const QUERY: Query = {
   sort: 'score', minGradient: 0.08, maxGradient: 1, minLength: 200, maxLength: 2000,
-  minCatchment: 0, minConfine: 0, minAltitude: 0, maxResults: 1e9,
+  minCatchment: 0, maxCatchment: Infinity, minConfine: 0, minAltitude: 0,
 };
 
 const meta: Payload = JSON.parse(await readFile('public/data/profiles.json', 'utf8'));

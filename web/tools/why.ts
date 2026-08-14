@@ -13,7 +13,6 @@ import { PRESETS } from '../src/presets.ts';
 import type { Payload, Query, SortKey } from '../src/types.ts';
 
 /** What the app shows: watercourses ranked by the preset's sort, then capped. */
-const MAX_GROUPS = 500;
 
 const name = process.argv[2];
 if (!name) {
@@ -53,7 +52,7 @@ for (const { c, i } of chains) {
 
 const loose: Query = {
   sort: 'score', minGradient: 0.05, maxGradient: 1, minLength: 100, maxLength: 2000,
-  minCatchment: 0, minConfine: 0, minAltitude: 0, maxResults: 1e6,
+  minCatchment: 0, maxCatchment: Infinity, minConfine: 0, minAltitude: 0,
 };
 const all = search(loose);
 const mine = all.candidates.filter((c) => c.name === name);
@@ -89,9 +88,9 @@ for (const [key, p] of Object.entries(PRESETS)) {
     minLength: Number(p.minLen),
     maxLength: Number(p.maxLen),
     minCatchment: Number(p.minCatch),
+    maxCatchment: p.maxCatch === undefined ? Infinity : Number(p.maxCatch),
     minConfine: Number(p.minConf),
     minAltitude: Number(p.minAlt),
-    maxGroups: MAX_GROUPS,
   };
   const groups = buildGroups(search(q).candidates, q.sort, meta.spacing, groupModel);
   const at = groups.findIndex((g) => g.name === name);
@@ -112,9 +111,7 @@ for (const [key, p] of Object.entries(PRESETS)) {
     console.log(`${key.padEnd(15)} no                          ` +
       (culprits.length ? `${culprits.join(' or ')} filter` : 'no qualifying reach'));
   } else {
-    const rank = at + 1;
-    console.log(`${key.padEnd(15)} ${rank <= MAX_GROUPS ? 'yes' : 'no '}    ` +
-      `${String(rank).padStart(5)} of ${groups.length}` +
-      (rank > MAX_GROUPS ? `        below the ${MAX_GROUPS} cap` : ''));
+    console.log(`${key.padEnd(15)} yes    ` +
+      `${String(at + 1).padStart(5)} of ${groups.length}`);
   }
 }
