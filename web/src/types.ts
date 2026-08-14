@@ -58,7 +58,7 @@ export interface Candidate {
   gradient: number;
   steepest: number; // steepest 100m within the reach
   catchment: number; // km of watercourse upstream of the top
-  confine: number; // median rise of the lower valley side 100 m out, metres
+  confine: number; // mean rise of the lower valley side 100 m out, metres
   score: number; // prospect score; higher ranks more canyon-like
   top: number;
   bottom: number;

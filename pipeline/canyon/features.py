@@ -71,7 +71,9 @@ def reach_features(z: np.ndarray, up: np.ndarray, conf: dict[float, np.ndarray],
         "top_m": float(seg[0]),
         "bottom_m": float(seg[-1]),
     }
+    # Window mean, matching search.ts. The browser filters and scores off a
+    # prefix-sum mean, which is what makes the confinement slider free, so the
+    # fit has to see the same statistic.
     for r, vals in conf.items():
-        window = vals[i: j + 1]
-        feats[f"confine_{int(r)}m"] = float(np.median(window))
+        feats[f"confine_{int(r)}m"] = float(vals[i: j + 1].mean())
     return feats

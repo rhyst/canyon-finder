@@ -258,7 +258,7 @@ Medians with interquartile range, and AUC as the discriminating power:
 | --- | --- | --- | --- | --- | --- |
 | gradient | 0.20 | **0.25** | 0.10 | 0.41 | 0.73 |
 | catchment (km upstream) | **4.6** | 2.3 | 0.6 | **0.69** | 0.84 |
-| confinement at 100 m (m) | **11.2** | 6.2 | 4.0 | 0.64 | 0.69 |
+| confinement at 100 m (m) | **11.6** | 8.5 | 4.6 | 0.64 | 0.72 |
 | steepest 100 m | 0.30 | 0.31 | 0.16 | 0.48 | 0.77 |
 | steepest 25 m step | 0.46 | 0.48 | 0.23 | 0.56 | 0.84 |
 | fraction of reach ≥15% | 0.60 | 0.75 | 0.25 | 0.34 | 0.71 |
@@ -291,13 +291,13 @@ What filters cost, and how much sifting they save:
 | gradient ≥ 20% | 52% | 65% | 3,872 (14%) | 82 |
 | catchment ≥ 2 km | 77% | 53% | 5,348 (20%) | 76 |
 | catchment ≥ 5 km | 47% | **12%** | 1,543 (6%) | 36 |
-| confinement ≥ 20 m | 29% | 6% | 2,702 (10%) | 104 |
+| confinement ≥ 20 m | 26% | 6% | 2,641 (10%) | 110 |
 | gradient ≥ 10% & catchment ≥ 2 km | 60% | 47% | 1,545 (6%) | 28 |
 | gradient ≥ 15% & catchment ≥ 3 km | 36% | 24% | 280 (1%) | **8** |
 
 A logistic fit on the three useful features (standardised weights: catchment +1.12,
-gradient +0.84, confinement +0.23) scores **AUC 0.94** against background and 0.69 against
-0-star, and its top 2% of the pool holds 51% of all graded canyons. The catchment term is
+gradient +0.84, confinement +0.24) scores **AUC 0.94** against background and 0.68 against
+0-star, and its top 2% of the pool holds 49% of all graded canyons. The catchment term is
 **capped at 50 km** — chosen by AUC against the 0-star set. Uncapped it ranked the River
 Clyde (617 km upstream) above every real gorge, because more water is only evidence of a
 canyon up to a point. The fit ships as `score.json`, including the feature order, caps and
