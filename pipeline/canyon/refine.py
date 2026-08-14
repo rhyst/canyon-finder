@@ -17,7 +17,9 @@ import numpy as np
 import rasterio
 from pyproj import Transformer
 
-from .build import MIN_SCREEN_GRADIENT, SCALES, condition, max_gradient_at_scale
+from .build import (CONFINE_RADIUS, MIN_SCREEN_GRADIENT, SCALES, condition,
+                    max_gradient_at_scale)
+from .features import confinement
 from .lidar import GDAL_ENV, LidarSampler, build_index
 
 
@@ -96,6 +98,15 @@ def _refine(out: Path, work: Path, bbox: tuple[float, float, float, float],
         zc = condition(zl.astype(np.float32))
         s = slice(c["o"], c["o"] + c["n"])
         z[s] = np.round(zc * 10).astype(np.int16)
+
+        # Confinement has to be re-measured too, or a refined chain keeps a
+        # gorge depth read off the 50 m grid that flattened the gorge. Banks are
+        # ground level, so they are point samples, not channel-floor minima.
+        cf = confinement(lambda bx, by: sampler.sample(bx, by, radius=0.0)[0],
+                         x, y, zc, (CONFINE_RADIUS,))[CONFINE_RADIUS]
+        conf[s] = np.where(np.isfinite(cf), np.clip(np.round(cf), 0, 255),
+                           conf[s]).astype(np.uint8)
+
         c["screen"] = [round(max_gradient_at_scale(zc, sc), 4) for sc in SCALES]
         c["top"] = round(float(zc[0]), 1)
         c["bottom"] = round(float(zc[-1]), 1)

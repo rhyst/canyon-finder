@@ -158,8 +158,16 @@ class LidarSampler:
                 return t
         return None
 
-    def sample(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, list[str]]:
-        """Returns (elevations with NaN where uncovered, tile keys used)."""
+    def sample(self, xs: np.ndarray, ys: np.ndarray,
+               radius: float | None = None) -> tuple[np.ndarray, list[str]]:
+        """Returns (elevations with NaN where uncovered, tile keys used).
+
+        `radius` overrides the channel-floor search; pass 0 for a plain point
+        sample, which is what valley sides want — a bank is ground level, not the
+        lowest thing within 12 m of it.
+        """
+        if radius is None:
+            radius = self.radius
         out = np.full(xs.shape, np.nan, dtype=np.float32)
         used: set[str] = set()
         assign: dict[str, list[int]] = {}
@@ -175,7 +183,7 @@ class LidarSampler:
             except rasterio.RasterioIOError:
                 continue
             used.add(key)
-            r = int(round(self.radius / tile.res))
+            r = int(round(radius / tile.res))
             inv = ~src.transform
             pix = []
             for i in idx:

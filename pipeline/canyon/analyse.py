@@ -81,7 +81,8 @@ def main() -> None:
         upc = up_all[s].astype(np.float64) / 10
         lon, lat = chain_lonlat(c, dlon, dlat)
         x, y = to_bng.transform(lon, lat)
-        conf = confinement(dem, np.asarray(x), np.asarray(y), zc)
+        conf = {r: np.nan_to_num(v) for r, v in
+                confinement(dem.sample, np.asarray(x), np.asarray(y), zc).items()}
 
         for k, group in labels.get(ci, ()):
             rows[group].append(reach_features(zc, upc, conf, k["i"], k["j"], spacing))

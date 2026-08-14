@@ -109,7 +109,8 @@ def build(raw: Path, out: Path, gpkg: Path, bbox: tuple[float, ...] = BBOX) -> N
 
         # Valley confinement: how far the lower bank rises 100 m out. Second-best
         # discriminator after catchment (see canyon.analyse).
-        conf = confinement(dem, pts[:, 0], pts[:, 1], z)[CONFINE_RADIUS]
+        conf = confinement(dem.sample, pts[:, 0], pts[:, 1], z,
+                           (CONFINE_RADIUS,))[CONFINE_RADIUS]
 
         # Upstream catchment length at each sample, from per-link accumulation.
         link_ends = np.cumsum([l.length for l in chain.links])
@@ -140,7 +141,7 @@ def build(raw: Path, out: Path, gpkg: Path, bbox: tuple[float, ...] = BBOX) -> N
         z_parts.append(np.round(z * 10).astype(np.int16))
         xy_parts.append((dlon.astype(np.int16), dlat.astype(np.int16)))
         up_parts.append(np.minimum(np.round(up_km * 10), 65535).astype(np.uint16))
-        conf_parts.append(np.clip(np.round(conf), 0, 255).astype(np.uint8))
+        conf_parts.append(np.clip(np.round(np.nan_to_num(conf)), 0, 255).astype(np.uint8))
         index.append({
             "o": offset,
             "n": n,
