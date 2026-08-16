@@ -66,5 +66,9 @@ const missed = logged.filter((k) => isGraded(k)
 console.log(`graded canyons with no group at this query: ${missed.length}` +
   (missed.length ? ` (${missed.slice(0, 5).map((m) => m.name).join(', ')})` : ''));
 
-await writeFile(out, JSON.stringify({ query: QUERY, groups: rows }));
+// canyon.rank reads these rows positionally, so it must be able to tell whether
+// they describe the payload it is pointed at.
+await writeFile(out, JSON.stringify({
+  index_id: meta.index_id, query: QUERY, groups: rows,
+}));
 console.log(`wrote ${out}`);

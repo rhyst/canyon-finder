@@ -170,9 +170,8 @@ check('drainage filters work at both ends', () => {
   for (const c of byChannel.candidates) assert.ok(c.catchment >= 20, `${c.catchment}`);
 });
 
-const logged: KnownCanyon[] = JSON.parse(
-  await readFile('public/data/known.json', 'utf8'),
-).canyons;
+const knownDoc = JSON.parse(await readFile('public/data/known.json', 'utf8'));
+const logged: KnownCanyon[] = knownDoc.canyons;
 
 check('the search recovers most logged canyons', () => {
   const wide = search(query({ minGradient: 0.08, minLength: 200, maxLength: 2000 }));
@@ -265,7 +264,26 @@ check('group summaries add up', () => {
 const groupModel: GroupModel = JSON.parse(
   await readFile('public/data/group-score.json', 'utf8'),
 );
-const exported = JSON.parse(await readFile('../data/work/groups.json', 'utf8')).groups;
+const groupsDoc = JSON.parse(await readFile('../data/work/groups.json', 'utf8'));
+const exported = groupsDoc.groups;
+
+check('every derived artifact was built against this payload', () => {
+  // known.json addresses the payload by (chain, i, j); both models were fitted on
+  // reaches found in it. Rebuilding the payload renumbers the chains, and nothing
+  // about the result looks wrong — logged canyons land on the wrong burn and the
+  // promise column scores reaches that no longer exist. See canyon.payload.
+  assert.ok(meta.index_id, 'profiles.json carries no index_id');
+  for (const [name, doc] of [
+    ['known.json', knownDoc],
+    ['score.json', scoreModel],
+    ['group-score.json', groupModel],
+    ['data/work/groups.json', groupsDoc],
+  ] as [string, { index_id?: string }][]) {
+    assert.equal(doc.index_id, meta.index_id,
+      `${name} was built against ${doc.index_id ?? '(nothing)'}, payload is ${meta.index_id}`);
+  }
+  console.log(`      payload index ${meta.index_id} · 4 artifacts agree`);
+});
 
 check('the browser reproduces the fitted group ranking', () => {
   // groupScore only reads .features, so the exported rows can stand in for groups.

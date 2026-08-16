@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import payload
 from .analyse import auc, logistic
 
 # Candidate features, with the transform used before standardising.
@@ -88,6 +89,8 @@ def main() -> None:
     a = p.parse_args()
 
     doc = json.loads(a.groups.read_text())
+    meta = json.loads((a.out / "profiles.json").read_text())
+    payload.require_index(meta, doc, a.groups.name)
     rows = doc["groups"]
     label = np.array([r["label"] for r in rows])
     train = np.isin(label, ["graded", "background"])
@@ -195,6 +198,7 @@ def main() -> None:
               f"conf {r['confine_median']:3.0f} m · {r['lat']:.4f},{r['lon']:.4f}")
 
     (a.out / "group-score.json").write_text(json.dumps({
+        "index_id": doc["index_id"],
         "transform": [{**{k: v for k, v in s.items() if k != "src"},
                        "name": s.get("src", n)} for n, s in chosen],
         "mean": mu.tolist(),

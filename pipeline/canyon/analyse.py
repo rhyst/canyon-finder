@@ -53,7 +53,9 @@ def main() -> None:
     pay = payload.load(a.out)
     meta, spacing = pay.meta, pay.spacing
     z_all, up_all, conf_all, drain_all = pay.z, pay.up, pay.conf, pay.drain
-    logged = json.loads((a.out / "known.json").read_text())["canyons"]
+    known = json.loads((a.out / "known.json").read_text())
+    payload.require_index(pay.meta, known, "known.json")
+    logged = known["canyons"]
     if not drain_all.any():
         print("payload carries no drainage area; run python -m canyon.watershed")
     dem = Terrain50.load(a.raw / "terr50", set(SQUARES),
@@ -162,7 +164,7 @@ def main() -> None:
         print(f"{name:32} {keep_g * 100:9.0f}% {keep_r * 100:10.0f}% "
               f"{pool:8,} ({pool / n_bg * 100:3.0f}%) {sift:14.0f}")
 
-    fit_score(arrays, a.out)
+    fit_score(arrays, a.out, pay.meta["index_id"])
 
 
 def logistic(X: np.ndarray, y: np.ndarray, iters: int = 40) -> np.ndarray:
@@ -194,7 +196,8 @@ WATER_CAPS = {
 }
 
 
-def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path) -> None:
+def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path,
+              index: str) -> None:
     """Fit graded-vs-background on the three features that carry signal.
 
     Two of them are settled — gradient and confinement. The third is "how much
@@ -234,6 +237,7 @@ def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path) -> None:
         print(f"    {n:26} {c:+.3f}")
 
     (out / "score.json").write_text(json.dumps({
+        "index_id": index,
         "transform": [
             {"name": "gradient"},
             {"name": water, "cap": cap, "log1p": True},

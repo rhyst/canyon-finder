@@ -13,6 +13,8 @@ export interface ChainMeta {
 }
 
 export interface Payload {
+  /** Fingerprint of the chain index; see canyon/payload.py. */
+  index_id?: string;
   spacing: number;
   scales: number[];
   confine_radius?: number;

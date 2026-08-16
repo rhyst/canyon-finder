@@ -167,6 +167,8 @@ function groupLogOdds(g: Group, model: GroupModel): number {
 }
 
 export interface GroupModel {
+  /** Payload the fit was made against; see canyon/payload.py. */
+  index_id?: string;
   transform: { name: string; cap?: number; log1p?: boolean }[];
   mean: number[];
   sd: number[];

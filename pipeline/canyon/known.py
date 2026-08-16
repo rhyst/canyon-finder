@@ -31,10 +31,22 @@ GRADE_RE = re.compile(r"Grade:\s*([^<\n]+)")
 TAG_RE = re.compile(r"<[^>]+>")
 
 
-def fetch(url: str = SOURCE) -> list[dict]:
+def fetch(cache: Path, refresh: bool = False, url: str = SOURCE) -> list[dict]:
+    """Canyon Log's map data, cached on first fetch.
+
+    Rebuilding the payload renumbers its chains, so this has to run again every
+    time — see canyon.payload.index_id. That is no reason to pull someone else's
+    site each time: it is cached like the LiDAR index and the gauging stations,
+    and --refresh is there when the logs have actually changed.
+    """
+    if cache.exists() and not refresh:
+        return json.loads(cache.read_text())["locations"]
     req = urllib.request.Request(url, headers={"User-Agent": "canyon-finder/1.0"})
     with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read())["locations"]
+        raw = resp.read()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_bytes(raw)
+    return json.loads(raw)["locations"]
 
 
 def parse(loc: dict) -> dict | None:
@@ -75,13 +87,17 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--out", type=Path, default=root / "web" / "public" / "data")
     p.add_argument("--raw", type=Path, default=root / "data" / "raw")
+    p.add_argument("--work", type=Path, default=root / "data" / "work")
+    p.add_argument("--refresh", action="store_true",
+                   help="re-fetch Canyon Log instead of using the cache")
     p.add_argument("--min-len", type=float, default=200)
     p.add_argument("--max-len", type=float, default=1200)
     p.add_argument("--max-snap", type=float, default=500,
                    help="give up if no watercourse sample is this close, in metres")
     a = p.parse_args()
 
-    locations = [r for r in (parse(l) for l in fetch()) if r]
+    locations = [r for r in (parse(l) for l in
+                             fetch(a.work / "canyonlog.json", a.refresh)) if r]
     print(f"Canyon Log: {len(locations)} logged canyons worldwide")
 
     scot = scotland(a.raw)
@@ -94,7 +110,7 @@ def main() -> None:
     print(f"  {len(inside)} in Scotland")
 
     pay = payload.load(a.out)
-    meta, total = pay.meta, pay.total
+    meta, total, spacing = pay.meta, pay.total, pay.spacing
     lon_all = np.empty(total)
     lat_all = np.empty(total)
     chain_of = np.empty(total, dtype=np.int32)
@@ -114,7 +130,7 @@ def main() -> None:
             continue
         ci = int(chain_of[idx])
         c = meta["chains"][ci]
-        zc = z[c["o"]: c["o"] + c["n"]].astype(np.float32) / 10
+        zc = pay.z[pay.chain(c)].astype(np.float32) / 10
         hit = idx - c["o"]
         i, j, grad = best_reach(zc, hit, spacing, a.min_len, a.max_len)
         lo, la = chain_lonlat(c, pay.dlon, pay.dlat)
@@ -136,6 +152,7 @@ def main() -> None:
     out.sort(key=lambda r: -r["gradient"])
     (a.out / "known.json").write_text(json.dumps({
         "source": "Canyon Log — https://canyonlog.org/map/",
+        "index_id": pay.meta["index_id"],
         "canyons": out,
     }))
     print(f"wrote {len(out)} snapped canyons -> {a.out / 'known.json'}")

@@ -20,6 +20,7 @@ format would read the new bytes as the wrong thing rather than fail.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
 from dataclasses import dataclass
@@ -33,6 +34,37 @@ MAGIC = b"CNY4"
 # linear scale cannot do in two bytes. Stored as deltas, which are zero for most
 # samples and so cost almost nothing once gzipped.
 DRAIN_SCALE = 500.0
+
+
+def index_id(meta: dict) -> str:
+    """Fingerprint of everything a stored (chain, i, j) index depends on.
+
+    known.json, score.json and group-score.json all address this payload by
+    position. Rebuild it — new OS data, a different --bbox, a change to how chains
+    are traced — and the chains renumber, so those artifacts point at different
+    water: logged canyons drawn on the wrong burn, a wrong "catches N/91", a score
+    fitted to reaches that no longer exist. Nothing about that fails loudly on its
+    own, so each artifact records this and its reader checks it.
+
+    Deliberately covers structure only. refine and watershed rewrite values in
+    place without moving anything, so they must not invalidate the artifacts.
+    """
+    h = hashlib.blake2b(digest_size=8)
+    h.update(f"{meta['spacing']}|{meta['samples']}|{len(meta['chains'])}|".encode())
+    for c in meta["chains"]:
+        h.update(f"{c['o']},{c['n']},{c['lon0']},{c['lat0']};".encode())
+    return h.hexdigest()
+
+
+def require_index(meta: dict, doc: dict, name: str) -> None:
+    """Refuse to use an artifact built against a different payload."""
+    want, got = meta.get("index_id"), doc.get("index_id")
+    if want and got and want == got:
+        return
+    raise SystemExit(
+        f"{name} was built against payload index {got or '(none recorded)'}, but "
+        f"this payload is {want}. Re-run the pipeline in order:\n"
+        f"  build -> refine -> watershed -> known -> analyse -> export-groups -> rank")
 
 
 @dataclass
@@ -106,6 +138,7 @@ def save(out: Path, p: Payload) -> None:
         ddrain[s] = np.diff(qc, prepend=qc[0]).astype(np.uint16)
         c["drain0"] = int(qc[0])
 
+    p.meta["index_id"] = index_id(p.meta)
     with (out / "profiles.bin").open("wb") as f:
         f.write(struct.pack("<4sIII", MAGIC, total, len(p.chains), int(p.spacing)))
         f.write(p.z.astype(np.int16).tobytes())
