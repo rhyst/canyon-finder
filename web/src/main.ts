@@ -84,9 +84,11 @@ let results: Candidate[] = []; // everything the worker returned
 let view: Candidate[] = []; // filtered + sorted
 let rows: Row[] = []; // exactly what the list shows: group headers plus expanded reaches
 let selected = -1; // index into `rows`
-let stats = { scanned: 0, ms: 0, totalGroups: 0, totalReaches: 0, truncated: false };
+let stats = { scanned: 0, ms: 0, totalReaches: 0, truncated: false };
 let queryId = 0;
 let ready = false;
+// Artifacts built against a different payload, dropped rather than trusted.
+const stale: string[] = [];
 
 const empty = { type: 'FeatureCollection', features: [] } as const;
 // Within this distance a candidate is the same water as a logged entry.
@@ -266,10 +268,21 @@ async function boot() {
     fetch('data/score.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
     fetch('data/group-score.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
-  scoreModel = score;
-  groupModel = groups;
   payload = meta;
-  known = (knownDoc.canyons as KnownCanyon[]).map((k) => ({
+  // known.json addresses the payload by (chain, i, j) and both models were fitted
+  // on reaches found in it. If any of them was built against a different payload,
+  // using it anyway means logged canyons drawn on the wrong burn and a promise
+  // column scored against reaches that no longer exist — wrong, and quietly so.
+  // Dropping what does not match is worse-looking and better.
+  const fresh = <T extends { index_id?: string }>(doc: T | null, name: string) => {
+    if (!doc || !meta.index_id || doc.index_id === meta.index_id) return doc;
+    stale.push(name);
+    return null;
+  };
+  scoreModel = fresh(score, 'score.json');
+  groupModel = fresh(groups, 'group-score.json');
+  const usableKnown = fresh(knownDoc, 'known.json');
+  known = ((usableKnown?.canyons ?? []) as KnownCanyon[]).map((k) => ({
     ...k,
     lon: k.coords[0][0],
     lat: k.coords[0][1],
@@ -280,7 +293,7 @@ async function boot() {
     (map.getSource('known-points') as GeoJSONSource).setData(knownPointGeoJSON() as never);
   }
   el('dem').textContent = payload.dem;
-  worker.postMessage({ type: 'init', meta, bin, score, groupModel: groups }, [bin]);
+  worker.postMessage({ type: 'init', meta, bin, score: scoreModel }, [bin]);
 }
 
 worker.onmessage = (e: MessageEvent) => {
@@ -292,7 +305,7 @@ worker.onmessage = (e: MessageEvent) => {
     if (msg.id !== queryId) return;
     results = msg.candidates;
     stats = {
-      scanned: msg.scanned, ms: msg.ms, totalGroups: msg.totalGroups,
+      scanned: msg.scanned, ms: msg.ms,
       totalReaches: msg.totalReaches, truncated: msg.truncated,
     };
     renderResults();
@@ -387,7 +400,9 @@ function renderResults(keepPlace = false) {
     `${view.length.toLocaleString()} reaches · ${took}` +
     (stats.truncated ? ' · <span class="trunc">search truncated</span>' : '') +
     (graded.length ? ` · <span class="known-hit">catches ${hit}/${graded.length} ` +
-      `logged descents</span>` : '');
+      `logged descents</span>` : '') +
+    (stale.length ? ` · <span class="trunc">ignoring ${esc(stale.join(', '))}: ` +
+      `built against a different payload, re-run the pipeline</span>` : '');
 
   rows = buildRows(groups, expanded);
 

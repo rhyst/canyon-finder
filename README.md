@@ -216,10 +216,17 @@ removed — the cost never justified it:
 | loosest the sliders allow (2%) | 205,359 | 22,096 | 1.1 s | 250 ms | 55 MB | 875k vertices, 51 MB |
 
 So realistic queries are trivial and even the absurd end is merely slow. The list renders
-120 rows at a time as you scroll, geometry is built only for reaches that get displayed, and
-a 400k-reach backstop exists solely to bound memory — it sits just under the arithmetic
-ceiling of 24 reaches × 18,652 chains, so no real query reaches it, and if one did the status
-line says `search truncated` rather than trimming quietly.
+120 rows at a time as you scroll, and a 400k-reach backstop exists solely to bound memory —
+it sits just under the arithmetic ceiling of 24 reaches × 18,650 chains, so no real query
+reaches it, and if one did the status line says `search truncated` rather than trimming
+quietly.
+
+Geometry is *not* lazy, whatever this file used to claim. Removing the result cap removed the
+subset there was to be lazy about: the worker now builds a polyline for every reach it
+returns, 997k vertices at the loosest settings. Grouping, though, happens once. It used to
+run in the worker and again on the main thread — which has to regroup anyway, since "limit to
+map view" and "hide logged" change group membership without re-querying — and the worker's
+copy survived only as a count. That cost 411 ms of the loosest query's 1.5 s.
 
 A test asserts a looser query never shows fewer watercourses and that its reaches cover the
 stricter query's, compared by channel position rather than name — a longer maxLength can grow

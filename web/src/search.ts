@@ -249,8 +249,8 @@ export function search(q: Query): {
         dem: c.dem ?? '50 m',
         lon: lon[o + i],
         lat: lat[o + i],
-        // Geometry is filled in later, for the reaches that survive the cap:
-        // building it for every match costs more than the search itself.
+        // Filled by fillCoords once the scan is done, not here: the scan
+        // discards most windows it looks at.
         coords: [],
       });
       ranges.push([from, i], [j, to]);
@@ -262,7 +262,7 @@ export function search(q: Query): {
   return { candidates: out, scanned, truncated: false };
 }
 
-/** Attach the polyline for a reach. Called only for what gets displayed. */
+/** Attach the polyline for a reach. */
 export function fillCoords(c: Candidate): Candidate {
   if (c.coords.length) return c;
   const o = meta.chains[c.chain].o;
