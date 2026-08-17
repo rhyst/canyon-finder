@@ -219,18 +219,18 @@ map.on('load', () => {
   for (const id of ['reaches', 'reach-dots']) {
     map.on('click', id, (e: MapLayerMouseEvent) => {
       const hit = e.features?.[0]?.properties?.rid;
-      if (hit !== undefined) selectCandidate(String(hit), id === 'reach-dots');
+      if (hit !== undefined) selectCandidate(String(hit));
     });
     map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
     map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
   }
   map.on('click', 'known', (e: MapLayerMouseEvent) => {
     const idx = e.features?.[0]?.properties?.idx;
-    if (idx !== undefined) selectKnown(Number(idx), false);
+    if (idx !== undefined) selectKnown(Number(idx));
   });
   map.on('click', 'known-dots', (e: MapLayerMouseEvent) => {
     const idx = e.features?.[0]?.properties?.idx;
-    if (idx !== undefined) selectKnown(Number(idx), true);
+    if (idx !== undefined) selectKnown(Number(idx));
   });
   for (const id of ['known', 'known-dots']) {
     map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
@@ -523,7 +523,7 @@ function renderRow(row: Row, i: number): HTMLLIElement {
       renderResults(true);
       return;
     }
-    select(i, true);
+    select(i);
   };
   return li;
 }
@@ -551,7 +551,7 @@ function drawReaches(list: Candidate[]) {
 /* ---------- selection + detail ---------- */
 
 /** Select by candidate identity, expanding its group so the row is visible. */
-function selectCandidate(id: string, fly: boolean) {
+function selectCandidate(id: string) {
   const target = view.find((c) => candId(c) === id);
   if (!target) return;
   const key = groupOf(target);
@@ -561,7 +561,7 @@ function selectCandidate(id: string, fly: boolean) {
     renderResults(true);
   }
   const at = findRow(rows, id);
-  if (at >= 0) select(at, fly);
+  if (at >= 0) select(at);
 }
 
 function contextOf(group: Group) {
@@ -585,7 +585,7 @@ function loggedTag(group: Group): string {
     ? '<span class="tag mini">logged</span> · ' : '';
 }
 
-function select(idx: number, fly: boolean) {
+function select(idx: number) {
   const row = rows[idx];
   if (!row) return;
   selected = idx;
@@ -609,7 +609,7 @@ function select(idx: number, fly: boolean) {
       i: cand.i,
       j: cand.j,
       extra: '',
-    }, fly);
+    });
   } else {
     const first = group.members[0];
     const last = group.members[group.members.length - 1];
@@ -624,7 +624,7 @@ function select(idx: number, fly: boolean) {
       i: first.i,
       j: last.j,
       extra: '',
-    }, fly);
+    });
   }
 
   ensureRendered(idx);
@@ -643,7 +643,7 @@ function highlight(idx: number) {
   items[idx]?.scrollIntoView({ block: 'center', behavior: 'auto' });
 }
 
-function selectKnown(idx: number, fly: boolean) {
+function selectKnown(idx: number) {
   const k = known[idx];
   if (!k) return;
   selected = -1;
@@ -664,7 +664,7 @@ function selectKnown(idx: number, fly: boolean) {
     extra: safeUrl(k.url)
       ? `<a target="_blank" rel="noreferrer" href="${safeUrl(k.url)}">Canyon Log</a>`
       : '',
-  }, fly);
+  });
 
   // Tie the canyon back to its watercourse in the list: highlight the group
   // whose reaches its window sits on, so the list shows where it belongs — and
@@ -687,7 +687,7 @@ interface Detail {
   extra: string;
 }
 
-function showDetail(info: Detail, fly: boolean) {
+function showDetail(info: Detail) {
   (map.getSource('picked') as GeoJSONSource | undefined)?.setData({
     type: 'Feature',
     geometry: { type: 'MultiLineString', coordinates: info.coords },
@@ -697,22 +697,19 @@ function showDetail(info: Detail, fly: boolean) {
   const flat = info.coords.flat();
   const lons = flat.map((p) => p[0]);
   const lats = flat.map((p) => p[1]);
-  if (fly) {
-    map.fitBounds(
-      [
-        [Math.min(...lons), Math.min(...lats)],
-        [Math.max(...lons), Math.max(...lats)],
-      ],
-      { padding: 120, maxZoom: 15, duration: 600 },
-    );
-  }
 
   const lat = lats[0];
   const lon = lons[0];
   const d = el('detail');
   d.hidden = false;
   d.innerHTML = `
-    <button aria-label="Close">×</button>
+    <button class="zoom" aria-label="Zoom to feature" title="Zoom to feature">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+        <circle cx="6.5" cy="6.5" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M10 10l4.2 4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button class="close" aria-label="Close" title="Close">×</button>
     <h2>${info.title}</h2>
     ${info.context ? `<div class="stats context">${info.context}</div>` : ''}
     <div class="stats">${info.stats}</div>
@@ -725,7 +722,18 @@ function showDetail(info: Detail, fly: boolean) {
          href="https://www.google.com/maps/@${lat.toFixed(5)},${lon.toFixed(5)},600m/data=!3m1!1e3">Satellite</a>
       <a href="#" id="copy">Copy ${lat.toFixed(5)}, ${lon.toFixed(5)}</a>
     </div>`;
-  d.querySelector('button')!.onclick = () => {
+  // Selecting never moves the map — it is jarring when the click came from the
+  // map itself — so fitting the view to the feature is the button's job.
+  d.querySelector<HTMLButtonElement>('button.zoom')!.onclick = () => {
+    map.fitBounds(
+      [
+        [Math.min(...lons), Math.min(...lats)],
+        [Math.max(...lons), Math.max(...lats)],
+      ],
+      { padding: 120, maxZoom: 15, duration: 600 },
+    );
+  };
+  d.querySelector<HTMLButtonElement>('button.close')!.onclick = () => {
     d.hidden = true;
     saveState({ selected: null });
   };
@@ -814,13 +822,13 @@ function tryRestoreSelection() {
   if (!rows.length || (sel.kind === 'known' && !known.length)) return;
   pendingSelection = null;
   if (sel.kind === 'reach') {
-    selectCandidate(sel.id, false);
+    selectCandidate(sel.id);
   } else if (sel.kind === 'group') {
     const at = rows.findIndex((r) => !r.cand && r.group.key === sel.id);
-    if (at >= 0) select(at, false);
+    if (at >= 0) select(at);
   } else {
     const idx = known.findIndex((k) => `${k.chain}:${k.i}:${k.j}` === sel.id);
-    if (idx >= 0) selectKnown(idx, false);
+    if (idx >= 0) selectKnown(idx);
   }
 }
 
@@ -862,7 +870,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     const next = selected + (e.key === 'ArrowDown' ? 1 : -1);
     if (next >= 0 && next < rows.length) {
-      select(next, true);
+      select(next);
       e.preventDefault();
     }
   }

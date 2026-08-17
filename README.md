@@ -247,7 +247,8 @@ proximity fallback for entries that snapped to a neighbouring burn — which is 
 prospecting view; groups that keep one are tagged `logged` with the canyon's name.
 Selecting a logged canyon on the map highlights its watercourse's row in the list, when
 the current filters still return it. Selecting a reach draws its elevation
-profile and links out to OS Maps and satellite imagery. Basemap switches between
+profile and links out to OS Maps and satellite imagery; selection never moves the map —
+the card's zoom button fits the view to the feature instead. Basemap switches between
 OpenTopoMap and Esri satellite imagery. Reaches and logged canyons draw as dots below
 zoom 11 and as lines above it, so a Scotland-wide view stays readable.
 
