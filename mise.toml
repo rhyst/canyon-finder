@@ -1,0 +1,147 @@
+# Tool versions and tasks for canyon-finder.
+# Python is managed by uv inside pipeline/ (see pyproject.toml); mise pins node.
+
+[tools]
+node = "24"
+
+# ── setup ─────────────────────────────────────────────────────────────────
+
+[tasks.install]
+description = "Install everything: pipeline venv (uv sync) + web deps (npm install)"
+depends = ["install:pipeline", "install:web"]
+
+[tasks."install:pipeline"]
+description = "Create/update the pipeline venv and install Python dependencies"
+dir = "pipeline"
+run = "uv sync"
+
+[tasks."install:web"]
+description = "npm install for the web app"
+dir = "web"
+run = "npm install"
+
+[tasks.fetch]
+description = "Download raw open data into data/raw/ (~215 MB, idempotent)"
+run = "./pipeline/fetch.sh"
+
+# ── everyday ──────────────────────────────────────────────────────────────
+
+[tasks.dev]
+description = "Vite dev server for the web app"
+dir = "web"
+run = "npm run dev"
+
+[tasks.build]
+description = "Full build: recompile profiles from OS data, then build the web app"
+depends = ["pipeline:build", "web:build"]
+
+[tasks.test]
+description = "Web search-engine tests + watershed routing selftest"
+depends = ["web:test", "pipeline:selftest"]
+
+# ── pipeline ──────────────────────────────────────────────────────────────
+
+[tasks."pipeline:build"]
+description = "Compile OS data -> profiles.bin + profiles.json for all of Scotland (~20 s)"
+dir = "pipeline"
+run = "uv run python -m canyon.build"
+
+[tasks."pipeline:region"]
+description = "Build one region by bounding box instead of all Scotland"
+dir = "pipeline"
+usage = '''
+arg "<minx>" help="bbox west edge (OSGB easting, e.g. 270000)"
+arg "<miny>" help="bbox south edge (OSGB northing)"
+arg "<maxx>" help="bbox east edge"
+arg "<maxy>" help="bbox north edge"
+'''
+run = "uv run python -m canyon.build --bbox ${usage_minx?} ${usage_miny?} ${usage_maxx?} ${usage_maxy?}"
+
+[tasks."pipeline:refine"]
+description = "Re-profile a region with LiDAR where tiles exist (rewrites elevation in the payload)"
+dir = "pipeline"
+usage = '''
+arg "<minx>" help="bbox west edge (OSGB easting)"
+arg "<miny>" help="bbox south edge (OSGB northing)"
+arg "<maxx>" help="bbox east edge"
+arg "<maxy>" help="bbox north edge"
+'''
+run = "uv run python -m canyon.refine --bbox ${usage_minx?} ${usage_miny?} ${usage_maxx?} ${usage_maxy?}"
+
+[tasks."pipeline:watershed"]
+description = "Drainage area per sample — one national pass (~1 min, ~1.6 GB)"
+dir = "pipeline"
+usage = '''
+flag "--cell <m>" default="100" help="grid cell size; 50 is worth it if small catchments matter"
+'''
+run = "uv run python -m canyon.watershed --cell ${usage_cell?}"
+
+[tasks."pipeline:selftest"]
+description = "Watershed routing on synthetic grids (no data needed)"
+dir = "pipeline"
+run = "uv run python -m canyon.watershed --selftest"
+
+[tasks."pipeline:validate"]
+description = "Check the shortlist against known commercial venues (independent fixture)"
+dir = "pipeline"
+run = "uv run python -m canyon.validate"
+
+[tasks."pipeline:coverage"]
+description = "Measure LiDAR coverage of the steep shortlist"
+dir = "pipeline"
+run = "uv run python -m canyon.coverage"
+
+[tasks."pipeline:known"]
+description = "Pull Canyon Log descents and snap them onto profiles (-> known.json)"
+dir = "pipeline"
+run = "uv run python -m canyon.known"
+
+[tasks."pipeline:analyse"]
+description = "Compare graded descents vs 0-star vs background; fit score.json"
+dir = "pipeline"
+run = "uv run python -m canyon.analyse"
+
+[tasks."pipeline:rank"]
+description = "Fit the watercourse promise ranking (needs groups.json from web:export-groups)"
+dir = "pipeline"
+run = "uv run python -m canyon.rank"
+
+# ── web ───────────────────────────────────────────────────────────────────
+
+[tasks."web:build"]
+description = "Type-check (tsc --noEmit) and build the web app"
+dir = "web"
+run = "npm run build"
+
+[tasks."web:typecheck"]
+description = "tsc --noEmit only"
+dir = "web"
+run = "npx tsc --noEmit"
+
+[tasks."web:preview"]
+description = "Preview the built web app"
+dir = "web"
+run = "npm run preview"
+
+[tasks."web:test"]
+description = "Search-engine tests (reads web/public/data payloads)"
+dir = "web"
+run = "node --experimental-strip-types test/search.test.ts"
+
+[tasks."web:why"]
+description = "Explain a watercourse: its reaches, steepest window, and rank under each preset"
+dir = "web"
+usage = '''
+arg "<name>" help="watercourse name, e.g. \"Glentarken Burn\""
+'''
+run = "node --experimental-strip-types tools/why.ts \"${usage_name?}\""
+
+[tasks."web:thresholds"]
+description = "Measure preset recall against logged descents (the README tables)"
+dir = "web"
+run = "node --experimental-strip-types tools/thresholds.ts"
+
+[tasks."web:export-groups"]
+description = "Export grouped search results for the ranking fit (-> data/work/groups.json)"
+dir = "web"
+run = "node --experimental-strip-types tools/export-groups.ts"

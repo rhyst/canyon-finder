@@ -22,9 +22,16 @@ import {
 } from './grouping';
 import { covered, isDud, isGraded } from './canyonlog';
 import { esc, fmtArea, reachLine, safeUrl, watercourseLine } from './format';
+import { loadState, presetFor, saveState, type SavedSelection } from './state';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+// Last session, if any. Restored before the worker's ready message applies a
+// preset and runs the first search, so the restore cannot be clobbered.
+const saved = loadState();
+// The style cannot carry the saved basemap, so pick the visible layer here.
+const savedBasemap = saved.filters?.basemap === 'sat' ? 'sat' : 'topo';
 
 const BASEMAPS: Record<string, { tiles: string[]; attribution: string; maxzoom: number }> = {
   topo: {
@@ -53,8 +60,8 @@ function applyPreset(name: string) {
 
 const map = new MapLibreMap({
   container: 'map',
-  center: [-4.6, 56.9],
-  zoom: 6.4,
+  center: saved.view?.center ?? [-4.6, 56.9],
+  zoom: saved.view?.zoom ?? 6.4,
   style: {
     version: 8,
     sources: Object.fromEntries(Object.entries(BASEMAPS).map(([k, b]) => [
@@ -66,7 +73,7 @@ const map = new MapLibreMap({
       id: `base-${k}`,
       type: 'raster' as const,
       source: `base-${k}`,
-      layout: { visibility: k === 'topo' ? ('visible' as const) : ('none' as const) },
+      layout: { visibility: k === savedBasemap ? ('visible' as const) : ('none' as const) },
     })),
   },
 });
@@ -87,6 +94,8 @@ let selected = -1; // index into `rows`
 let stats = { scanned: 0, ms: 0, totalReaches: 0, truncated: false };
 let queryId = 0;
 let ready = false;
+// The saved selection, re-applied once the rows for it exist.
+let pendingSelection: SavedSelection | null = saved.selected ?? null;
 // Artifacts built against a different payload, dropped rather than trusted.
 const stale: string[] = [];
 
@@ -226,10 +235,23 @@ map.on('load', () => {
     map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
     map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
   }
+  // The style cannot carry the saved "logged" visibility either.
+  if (!el<HTMLInputElement>('showKnown').checked) {
+    for (const id of ['known', 'known-casing', 'known-dots']) {
+      map.setLayoutProperty(id, 'visibility', 'none');
+    }
+  }
   map.on('moveend', () => {
+    const c = map.getCenter();
+    saveState({ view: { center: [c.lng, c.lat], zoom: map.getZoom() } });
     if (el<HTMLInputElement>('viewOnly').checked) renderResults();
   });
-  if (results.length) renderResults(); // the worker may have finished first
+  // The worker may have finished first: its render could not reach the map
+  // (these sources did not exist yet), so draw that now. Deliberately not a
+  // full renderResults — repainting the list would reset its scroll and
+  // strand a just-restored selection back at the top.
+  if (results.length) drawReaches(view);
+  tryRestoreSelection();
 });
 
 function knownPointGeoJSON() {
@@ -300,7 +322,11 @@ worker.onmessage = (e: MessageEvent) => {
   const msg = e.data;
   if (msg.type === 'ready') {
     ready = true;
-    applyPreset(el<HTMLSelectElement>('preset').value);
+    // A restored 'custom' panel has no preset to apply; search against the
+    // restored sliders instead, or the first query never runs.
+    const preset = el<HTMLSelectElement>('preset').value;
+    if (PRESETS[preset]) applyPreset(preset);
+    else run();
   } else if (msg.type === 'results') {
     if (msg.id !== queryId) return;
     results = msg.candidates;
@@ -309,6 +335,7 @@ worker.onmessage = (e: MessageEvent) => {
       totalReaches: msg.totalReaches, truncated: msg.truncated,
     };
     renderResults();
+    tryRestoreSelection();
   } else if (msg.type === 'profile') {
     drawProfile(msg.points);
   }
@@ -542,6 +569,9 @@ function select(idx: number, fly: boolean) {
   if (!row) return;
   selected = idx;
   const { group, cand } = row;
+  saveState({ selected: cand
+    ? { kind: 'reach', id: candId(cand) }
+    : { kind: 'group', id: group.key } });
 
   if (cand) {
     // A reach is only meaningful against the watercourse it belongs to, so show
@@ -577,17 +607,26 @@ function select(idx: number, fly: boolean) {
   }
 
   ensureRendered(idx);
+  highlight(idx);
+}
+
+/** Mark row `idx` selected in the list and bring it into view. Synchronous on
+ *  purpose: a deferred scroll races the repaints that can follow a restore
+ *  (a view-only re-render on moveend, a later query) and loses, leaving the
+ *  selection highlighted but off-screen. */
+function highlight(idx: number) {
   const items = el<HTMLUListElement>('results').children;
   for (let k = 0; k < items.length; k++) {
     items[k].setAttribute('aria-selected', String(k === idx));
   }
-  items[idx]?.scrollIntoView({ block: 'nearest' });
+  items[idx]?.scrollIntoView({ block: 'center', behavior: 'auto' });
 }
 
 function selectKnown(idx: number, fly: boolean) {
   const k = known[idx];
   if (!k) return;
   selected = -1;
+  saveState({ selected: { kind: 'known', id: `${k.chain}:${k.i}:${k.j}` } });
   const grade = k.grade ? `${esc(k.grade)} · ` : '';
   const dud = isDud(k);
   showDetail({
@@ -656,7 +695,10 @@ function showDetail(info: Detail, fly: boolean) {
          href="https://www.google.com/maps/@${lat.toFixed(5)},${lon.toFixed(5)},600m/data=!3m1!1e3">Satellite</a>
       <a href="#" id="copy">Copy ${lat.toFixed(5)}, ${lon.toFixed(5)}</a>
     </div>`;
-  d.querySelector('button')!.onclick = () => (d.hidden = true);
+  d.querySelector('button')!.onclick = () => {
+    d.hidden = true;
+    saveState({ selected: null });
+  };
   d.querySelector<HTMLAnchorElement>('#copy')!.onclick = (e) => {
     e.preventDefault();
     navigator.clipboard.writeText(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
@@ -693,6 +735,64 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
   </svg>`;
 }
 
+/* ---------- session persistence ---------- */
+
+/** The filter panel, by element id. Checkboxes save as 'true'/'false'. */
+const FILTER_IDS = [
+  'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrain', 'maxDrain',
+  'minConf', 'minAlt', 'sort', 'viewOnly', 'hideLogged', 'showKnown', 'basemap',
+];
+
+function saveFilters() {
+  const filters: Record<string, string> = {};
+  for (const id of FILTER_IDS) {
+    const node = document.getElementById(id);
+    if (node instanceof HTMLInputElement && node.type === 'checkbox') {
+      filters[id] = String(node.checked);
+    } else if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement) {
+      filters[id] = node.value;
+    }
+  }
+  saveState({ filters });
+}
+
+/** Put the saved filter panel back. The preset select shows the matching
+ *  preset, or 'custom' when the sliders were moved off it. A fresh visit has
+ *  nothing saved: the HTML defaults and the preset select apply as before. */
+function restoreFilters() {
+  if (!saved.filters) return;
+  for (const [id, value] of Object.entries(saved.filters)) {
+    const node = document.getElementById(id);
+    if (node instanceof HTMLInputElement && node.type === 'checkbox') {
+      node.checked = value === 'true';
+    } else if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement) {
+      node.value = value;
+    }
+  }
+  el<HTMLSelectElement>('preset').value = presetFor(saved.filters) ?? 'custom';
+}
+
+/** Re-select the saved watercourse once the rows for it exist. Best effort:
+ *  if the restored filters no longer return it, it stays unselected. */
+function tryRestoreSelection() {
+  const sel = pendingSelection;
+  if (!sel) return;
+  // The map's load can beat the worker's first results, and boot() can still
+  // be fetching known.json: keep the selection pending until there is
+  // something to select into, or it is silently dropped.
+  if (sel.kind === 'known' ? !known.length : !rows.length) return;
+  pendingSelection = null;
+  if (sel.kind === 'reach') {
+    selectCandidate(sel.id, false);
+  } else if (sel.kind === 'group') {
+    const at = rows.findIndex((r) => !r.cand && r.group.key === sel.id);
+    if (at >= 0) select(at, false);
+  } else {
+    const idx = known.findIndex((k) => `${k.chain}:${k.i}:${k.j}` === sel.id);
+    if (idx >= 0) selectKnown(idx, false);
+  }
+}
+
 /* ---------- wiring ---------- */
 
 let debounce: number | undefined;
@@ -701,19 +801,21 @@ document.querySelectorAll('input[type=range]').forEach((input) => {
     el<HTMLSelectElement>('preset').value = 'custom';
     readQuery();
     clearTimeout(debounce);
-    debounce = setTimeout(run, 60) as unknown as number;
+    debounce = setTimeout(() => { saveFilters(); run(); }, 60) as unknown as number;
   });
 });
-el('sort').addEventListener('change', () => renderResults());
-el('viewOnly').addEventListener('change', () => renderResults());
-el('hideLogged').addEventListener('change', () => renderResults());
+el('sort').addEventListener('change', () => { saveFilters(); renderResults(); });
+el('viewOnly').addEventListener('change', () => { saveFilters(); renderResults(); });
+el('hideLogged').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('showKnown').addEventListener('change', (e) => {
+  saveFilters();
   const on = (e.target as HTMLInputElement).checked ? 'visible' : 'none';
   for (const id of ['known', 'known-casing', 'known-dots']) {
     map.setLayoutProperty(id, 'visibility', on);
   }
 });
 el('basemap').addEventListener('change', (e) => {
+  saveFilters();
   const key = (e.target as HTMLSelectElement).value;
   for (const k of Object.keys(BASEMAPS)) {
     map.setLayoutProperty(`base-${k}`, 'visibility', k === key ? 'visible' : 'none');
@@ -722,6 +824,7 @@ el('basemap').addEventListener('change', (e) => {
 
 el('preset').addEventListener('change', (e) => {
   applyPreset((e.target as HTMLSelectElement).value);
+  saveFilters();
 });
 
 document.addEventListener('keydown', (e) => {
@@ -734,4 +837,5 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+restoreFilters();
 boot();

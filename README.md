@@ -101,6 +101,7 @@ cd web
 npm install
 npm run dev
 node --experimental-strip-types test/search.test.ts   # search engine tests
+node --experimental-strip-types test/state.test.ts    # session persistence tests
 ```
 
 The worker holds the whole dataset and, per query, emits reaches **steepest-first**: find
@@ -246,6 +247,15 @@ a Canyon Log entry, which is the prospecting view; groups that keep one are tagg
 profile and links out to OS Maps and satellite imagery. Basemap switches between
 OpenTopoMap and Esri satellite imagery. Reaches and logged canyons draw as dots below
 zoom 11 and as lines above it, so a Scotland-wide view stays readable.
+
+**The session is remembered.** The last map position, filter panel and selection are
+saved to localStorage (key `canyon-finder/v1`) and restored on load: the map opens
+where you left it, the sliders come back as they were, and the selected reach, watercourse
+or logged canyon is re-selected once the results render. The preset dropdown shows the
+matching preset when the saved sliders equal one of them, otherwise Custom. Saved values
+are validated before use (`src/state.ts`), so a corrupt or foreign entry is dropped
+rather than trusted, and a failed write — private mode, full quota — just means the app
+forgets. `node --experimental-strip-types test/state.test.ts` covers it.
 
 ## Validation
 
