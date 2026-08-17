@@ -5,13 +5,11 @@ much channel, with how much water feeding it.
 
 **[Open the map →](https://rhyst.github.io/canyon-finder/)**
 
-## A word of warning
+## Warning
 
-This project was largely **vibe coded** — built quickly with AI assistance, on public
-data, by someone who has descended a handful of Scottish canyons. The numbers are
-measured, and the known descents are found — but the prospect list is a hypothesis
-generator, not a guidebook. Nothing here knows about access rights, land ownership,
-in-stream hazards or water levels. Check everything yourself before you walk in.
+🚨 VIBE CODED 🚨 
+
+Everything in this project is pure slop! Use for entertainment purposes only! 
 
 ## Using the map
 
