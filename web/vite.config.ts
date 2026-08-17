@@ -1,3 +1,5 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({});
+// Relative, so the bundle works at any subpath — GitHub Pages project sites
+// serve from /<repo>/ — and under a custom domain without rebuilding.
+export default defineConfig({ base: './' });

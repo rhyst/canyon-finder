@@ -104,6 +104,14 @@ node --experimental-strip-types test/search.test.ts   # search engine tests
 node --experimental-strip-types test/state.test.ts    # session persistence tests
 ```
 
+Publishing is a static build: the compiled payload is committed, so nothing
+fetches or processes data at deploy time — `npm run build` packages it. GitHub
+Pages serves it via `.github/workflows/deploy.yml` (build ≈ one minute; enable
+it under repo Settings → Pages → Source: GitHub Actions). The bundle uses a
+relative base, so it works at any subpath or custom domain, and Canyon Log has
+agreed to the derived logged-canyon data being published with credit, which
+the footer already gives.
+
 The worker holds the whole dataset and, per query, emits reaches **steepest-first**: find
 the highest-gradient window in the requested length band, grow it outwards while it keeps
 80% of that gradient, then recurse either side. Chains are skipped via precomputed max
