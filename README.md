@@ -32,8 +32,8 @@ Everything in this project is pure slop! Use for entertainment purposes only!
 
 | What | Source | Notes |
 | --- | --- | --- |
-| Watercourses | OS Open Rivers | 63,210 km of named and unnamed channels, with flow direction. © Ordnance Survey, OGL v3. |
-| Elevation | OS Terrain 50 + Scottish public sector LiDAR | 50 m national baseline, refined to ~1 m where LiDAR exists. OGL v3. |
+| Watercourses | [OS Open Rivers](https://os.uk/products/os-open-rivers) | 63,210 km of named and unnamed channels, with flow direction. © Ordnance Survey, OGL v3. |
+| Elevation | [OS Terrain 50](https://os.uk/products/os-terrain-50) + [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) | 50 m national baseline, refined to ~1 m where LiDAR exists. OGL v3. |
 | Known descents | [Canyon Log](https://canyonlog.org/map/) | 146 community-logged Scottish canyons, reproduced with permission. Calibrates the filters and the scoring. |
 
 ## Developing locally
