@@ -58,6 +58,7 @@ uv run python -m canyon.build --bbox 270000 755000 295000 780000   # one region
 uv run python -m canyon.validate                   # check against known venues
 uv run python -m canyon.coverage                   # LiDAR coverage of the shortlist
 uv run python -m canyon.refine --bbox 283000 692000 302000 704000  # LiDAR re-profile
+uv run python -m canyon.lidarmap                     # coverage outline -> lidar.json
 uv run python -m canyon.known                      # logged canyons -> known.json
 uv run python -m canyon.watershed                  # drainage area per sample
 uv run python -m canyon.watershed --selftest       # routing on known grids

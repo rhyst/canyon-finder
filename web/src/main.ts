@@ -83,6 +83,7 @@ map.addControl(new ScaleControl({ unit: 'metric' }));
 let payload: Payload;
 let known: KnownCanyon[] = []; // community-logged descents, for calibration
 let graded: KnownCanyon[] = []; // the graded ones: catching a 0-star is no virtue
+let lidarGeometry: unknown = null; // coverage outline, fetched with the payload
 let scoreModel: ScoreModel | null = null;
 let groupModel: GroupModel | null = null;
 const promise = new Map<string, number>(); // group key -> fitted probability
@@ -107,6 +108,33 @@ const LOGGED_RADIUS = 250;
 const DRAIN_NO_LIMIT = 200;
 
 map.on('load', () => {
+  // Under the data, over the basemap: where the high-resolution elevation is.
+  // First layer added, so everything else draws on top of it.
+  map.addSource('lidar', { type: 'geojson', data: (lidarGeometry ?? empty) as never });
+  map.addLayer({
+    id: 'lidar',
+    type: 'fill',
+    source: 'lidar',
+    layout: { visibility: el<HTMLInputElement>('showLidar').checked ? 'visible' : 'none' },
+    paint: {
+      'fill-color': '#e5484d',
+      'fill-opacity': 0.22,
+    },
+  });
+  // fill-opacity dims the fill's own outline with it, so a solid border needs
+  // its own line layer: same source, undimmed paint, and it can be thicker
+  // than the hairline a fill layer is allowed.
+  map.addLayer({
+    id: 'lidar-outline',
+    type: 'line',
+    source: 'lidar',
+    layout: { visibility: el<HTMLInputElement>('showLidar').checked ? 'visible' : 'none' },
+    paint: {
+      'line-color': '#e5484d',
+      'line-opacity': 0.9,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 12, 3],
+    },
+  });
   map.addSource('reaches', { type: 'geojson', data: empty as never });
   map.addSource('reach-points', { type: 'geojson', data: empty as never });
   map.addSource('picked', { type: 'geojson', data: empty as never });
@@ -236,7 +264,7 @@ map.on('load', () => {
     map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer'));
     map.on('mouseleave', id, () => (map.getCanvas().style.cursor = ''));
   }
-  // The style cannot carry the saved "logged" visibility either.
+  // The style cannot carry the saved layer visibility either.
   if (!el<HTMLInputElement>('showKnown').checked) {
     for (const id of ['known', 'known-casing', 'known-dots']) {
       map.setLayoutProperty(id, 'visibility', 'none');
@@ -283,14 +311,21 @@ function knownGeoJSON() {
 /* ---------- data load ---------- */
 
 async function boot() {
-  const [meta, bin, knownDoc, score, groups] = await Promise.all([
+  const [meta, bin, knownDoc, score, groups, lidar] = await Promise.all([
     fetch('data/profiles.json').then((r) => r.json()),
     fetch('data/profiles.bin').then((r) => r.arrayBuffer()),
     fetch('data/known.json').then((r) => (r.ok ? r.json() : { canyons: [] }))
       .catch(() => ({ canyons: [] })),
     fetch('data/score.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
     fetch('data/group-score.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    fetch('data/lidar.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
+  if (lidar) {
+    lidarGeometry = lidar;
+    if (map.getSource('lidar')) {
+      (map.getSource('lidar') as GeoJSONSource).setData(lidar as never);
+    }
+  }
   payload = meta;
   // known.json addresses the payload by (chain, i, j) and both models were fitted
   // on reaches found in it. If any of them was built against a different payload,
@@ -778,7 +813,7 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
 /** The filter panel, by element id. Checkboxes save as 'true'/'false'. */
 const FILTER_IDS = [
   'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrain', 'maxDrain',
-  'minConf', 'minAlt', 'sort', 'viewOnly', 'hideLogged', 'showKnown', 'basemap',
+  'minConf', 'minAlt', 'sort', 'viewOnly', 'hideLogged', 'showKnown', 'showLidar', 'basemap',
 ];
 
 function saveFilters() {
@@ -851,6 +886,13 @@ el('showKnown').addEventListener('change', (e) => {
   const on = (e.target as HTMLInputElement).checked ? 'visible' : 'none';
   for (const id of ['known', 'known-casing', 'known-dots']) {
     map.setLayoutProperty(id, 'visibility', on);
+  }
+});
+el('showLidar').addEventListener('change', (e) => {
+  saveFilters();
+  const on = (e.target as HTMLInputElement).checked ? 'visible' : 'none';
+  for (const id of ['lidar', 'lidar-outline']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on);
   }
 });
 el('basemap').addEventListener('change', (e) => {

@@ -86,13 +86,19 @@
         </div>
 
         <div class="row">
-          <label class="check"><input id="showKnown" type="checkbox" checked />
-            <span class="swatch"></span> Logged
-            <span class="swatch dud"></span> 0-star</label>
+          <label class="check twin"><input id="showKnown" type="checkbox" checked />
+            <span class="pair"><span class="swatch"></span> Logged</span>
+            <span class="pair"><span class="swatch dud"></span> 0-star</span>
+          </label>
           <select id="basemap">
             <option value="topo">Basemap: topo</option>
             <option value="sat">Basemap: satellite</option>
           </select>
+        </div>
+
+        <div class="row">
+          <label class="check"><input id="showLidar" type="checkbox" />
+            <span class="swatch lidar"></span> LiDAR coverage</label>
         </div>
       </section>
 

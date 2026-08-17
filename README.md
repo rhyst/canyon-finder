@@ -25,6 +25,8 @@ Everything in this project is pure slop! Use for entertainment purposes only!
   they visited and reported as not worth it.
 - Click a reach or canyon for its elevation profile, drainage and links to OS Maps and
   satellite view. Your filters and position are remembered between visits.
+- **LiDAR coverage** outlines where high-resolution elevation exists; outside it, terrain
+  comes from the 50 m national model, which smooths gorges.
 
 ## Where the data comes from
 

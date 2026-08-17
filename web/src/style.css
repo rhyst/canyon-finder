@@ -59,6 +59,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
 
 .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 .check { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+/* Two-line legend: swatch pairs stack under the checkbox. */
+.check.twin {
+  display: grid; grid-template-columns: auto auto;
+  gap: 3px 6px; align-items: center;
+}
+.check.twin .pair { display: flex; gap: 6px; align-items: center; }
+.check.twin .pair + .pair { grid-column: 2; }
 select {
   background: var(--panel-2);
   color: var(--text);
@@ -172,6 +179,10 @@ footer p { margin: 0 0 6px; }
 }
 
 .swatch.dud { border-top-color: #8b97a3; }
+.swatch.lidar {
+  width: 14px; height: 10px; border: 1.5px solid #e5484d;
+  border-radius: 2px; background: rgba(229, 72, 77, 0.35);
+}
 
 .ramp {
   display: inline-flex;
