@@ -140,7 +140,11 @@ def main() -> None:
             "chain": ci,
             "i": i,
             "j": j,
-            "watercourse": c["name"],
+            # The run name at the window start, not the chain's dominant name:
+            # a chain changes name mid-course (Burn of Sorrow -> Dollar Burn at
+            # the confluence), and the app groups reaches per-run, so the chain
+            # name ties a logged canyon to a stretch it does not sit on.
+            "watercourse": payload.name_at(c, i),
             "gradient": round(grad, 4),
             "drop": round(float(zc[i] - zc[j]), 1),
             "length": (j - i) * spacing,

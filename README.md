@@ -241,9 +241,12 @@ the search engine, but the UI no longer exposes it: `tools/thresholds.ts` uses i
 two ways of measuring water comparable. Promise is the only
 score the UI exposes; the reach-level fit from `canyon.analyse` survives as the internal
 tie-breaker deciding which reaches survive the result cap, and as the evidence for which
-features matter. **Hide logged** drops watercourses within 250 m of
-a Canyon Log entry, which is the prospecting view; groups that keep one are tagged
-`logged`. Selecting a reach draws its elevation
+features matter. **Hide logged** drops watercourses a Canyon Log entry sits on —
+an entry whose measured window overlaps one of the group's reaches, with a 250 m
+proximity fallback for entries that snapped to a neighbouring burn — which is the
+prospecting view; groups that keep one are tagged `logged` with the canyon's name.
+Selecting a logged canyon on the map highlights its watercourse's row in the list, when
+the current filters still return it. Selecting a reach draws its elevation
 profile and links out to OS Maps and satellite imagery. Basemap switches between
 OpenTopoMap and Esri satellite imagery. Reaches and logged canyons draw as dots below
 zoom 11 and as lines above it, so a Scotland-wide view stays readable.

@@ -10,6 +10,6 @@ export const KNOWN_VENUES = [
   { watercourse: 'Acharn Burn', lon: -4.0222, lat: 56.5626, name: 'Acharn', note: 'Loch Tay' },
   { watercourse: 'Keltney Burn', lon: -4.0118, lat: 56.6323, name: 'Keltneyburn', note: 'Aberfeldy' },
   { watercourse: 'Keltie Water', lon: -4.1963, lat: 56.2794, name: 'Keltie', note: 'Bracklinn, Callander' },
-  { watercourse: 'Dollar Burn', lon: -3.7008, lat: 56.1853, name: 'Dollar Glen', note: 'Ochils' },
+  { watercourse: 'Burn of Sorrow', lon: -3.7008, lat: 56.1853, name: 'Dollar Glen', note: 'Ochils' },
   { watercourse: 'Alva Burn', lon: -3.7995, lat: 56.1655, name: 'Alva Glen', note: 'Ochils' },
 ];

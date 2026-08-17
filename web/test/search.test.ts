@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { KNOWN_VENUES } from '../src/known.ts';
 import { decode, fillCoords, profile, search } from '../src/search.ts';
 import {
-  buildGroups, buildRows, candId, findRow, groupScore,
+  buildGroups, buildRows, candId, findRow, groupScore, loggedOn,
   type Group, type GroupModel,
 } from '../src/grouping.ts';
 import { GRADED, ZERO_STAR, covered, isDud, isGraded } from '../src/canyonlog.ts';
@@ -437,6 +437,27 @@ check('third-party strings cannot inject markup or a script url', () => {
   assert.equal(dropped.length, 0,
     `${dropped.length} real Canyon Log urls rejected, e.g. ${dropped[0]?.url}`);
   console.log(`      ${logged.filter((k) => k.url).length} logged urls all pass the allowlist`);
+});
+
+check('a watercourse is tagged logged exactly when a logged canyon sits on it', () => {
+  const graded = logged.filter(isGraded);
+  const q = query({ minGradient: 0.08, minLength: 200, maxLength: 2000 });
+  const candidates = search(q).candidates;
+  const groups = buildGroups(candidates, 'drop', meta.spacing, null);
+
+  // The tag and the status count must agree: both are "a logged window overlaps
+  // a reach on this chain", so the sets must match exactly. A point distance
+  // used to decide the tag and missed canyons sitting right on the water.
+  const id = (k: KnownCanyon) => `${k.chain}:${k.i}:${k.j}`;
+  const viaTag = new Set(groups.flatMap((g) => loggedOn(g, graded)).map(id));
+  const viaCount = new Set(covered(graded, candidates).map(id));
+  assert.deepEqual([...viaTag].sort(), [...viaCount].sort());
+
+  // The case that motivated this: Dollar Canyon sits on the Burn of Sorrow run
+  // of its chain, not the Dollar Burn one, and must be tagged there by name.
+  const holder = groups.filter((g) =>
+    loggedOn(g, graded).some((k) => k.name === 'Dollar Canyon'));
+  assert.deepEqual(holder.map((g) => g.name), ['Burn of Sorrow']);
 });
 
 check('the logged-canyon count responds to every filter', () => {

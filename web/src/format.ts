@@ -40,6 +40,8 @@ export interface Context {
   promise: number | null;
   /** Whether a Canyon Log entry sits on this water. */
   logged: boolean;
+  /** Which ones, when the entry's window overlaps this water's reaches. */
+  loggedNames?: string[];
 }
 
 /** The watercourse summary — the context a single reach sits in. */
@@ -48,7 +50,11 @@ export function watercourseLine(group: Group, ctx: Context): string {
   const p = ctx.promise === null
     ? ''
     : `<span class="promise">promise ${(ctx.promise * 100).toFixed(0)}</span> · `;
-  const logged = ctx.logged ? '<span class="tag mini">logged</span> · ' : '';
+  const label = ctx.loggedNames?.length
+    ? `logged: ${esc(ctx.loggedNames.slice(0, 2).join(', '))}` +
+      (ctx.loggedNames.length > 2 ? ` +${ctx.loggedNames.length - 2}` : '')
+    : 'logged';
+  const logged = ctx.logged ? `<span class="tag mini">${label}</span> · ` : '';
   if (n === 1) {
     const only = group.members[0];
     return `${p}${logged}one reach · ${fmtArea(only.drain)} draining · ` +

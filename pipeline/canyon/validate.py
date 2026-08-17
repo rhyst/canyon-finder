@@ -51,17 +51,6 @@ def best_segment(z: np.ndarray, spacing: float, min_len: float, max_len: float):
     return best
 
 
-def name_at(chain: dict, i: int) -> str:
-    """The watercourse name carried at sample `i`, as the app reports it."""
-    name = chain["name"]
-    for start, run_name in chain["runs"]:
-        if start > i:
-            break
-        if run_name:
-            name = run_name
-    return name
-
-
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--out", type=Path,
@@ -81,7 +70,7 @@ def main() -> None:
         chain = next(c for c in meta["chains"] if c["o"] <= idx < c["o"] + c["n"])
         zc = z[chain["o"]: chain["o"] + chain["n"]]
         grad, drop, length, i, j = best_segment(zc, spacing, a.min_len, a.max_len)
-        reach = name_at(chain, i) or "unnamed"
+        reach = payload.name_at(chain, i) or "unnamed"
         dem = chain.get("dem", "50 m")
         print(f"{name:26} {reach[:24]:24} {grad * 100:5.1f}% {drop:6.0f}m "
               f"{length:5.0f}m {dist_m:5.0f}m  {dem}")

@@ -195,3 +195,19 @@ export function nearestLogged(
   }
   return best;
 }
+
+/** The logged canyons sitting on this group's water: an entry counts when its
+ *  window overlaps a member reach on the same chain — the same rule `covered`
+ *  uses for the status count, so the tag and the count cannot disagree.
+ *
+ *  A point distance cannot do this job. The logged marker sits at the top of
+ *  its window, the group's nearest sample is wherever its middle reach happens
+ *  to start, and the gap between those two points is not the gap to the water:
+ *  Dollar Canyon overlaps its reach directly and still measured 254 m. */
+export function loggedOn<T extends { chain: number; i: number; j: number }>(
+  g: Group,
+  logged: T[],
+): T[] {
+  return logged.filter((k) =>
+    k.chain === g.chain && g.members.some((m) => m.i <= k.j && m.j >= k.i));
+}

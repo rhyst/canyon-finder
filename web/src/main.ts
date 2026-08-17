@@ -17,7 +17,7 @@ import type {
 } from './types';
 import { PRESETS } from './presets';
 import {
-  buildGroups, buildRows, candId, findRow, groupOf, groupScore, nearestLogged,
+  buildGroups, buildRows, candId, findRow, groupOf, groupScore, loggedOn, nearestLogged,
   type Group, type GroupModel, type Row,
 } from './grouping';
 import { covered, isDud, isGraded } from './canyonlog';
@@ -87,6 +87,7 @@ let scoreModel: ScoreModel | null = null;
 let groupModel: GroupModel | null = null;
 const promise = new Map<string, number>(); // group key -> fitted probability
 const nearby = new Map<string, number>(); // group key -> metres to nearest logged
+const loggedHere = new Map<string, string[]>(); // group key -> logged canyons on it
 let results: Candidate[] = []; // everything the worker returned
 let view: Candidate[] = []; // filtered + sorted
 let rows: Row[] = []; // exactly what the list shows: group headers plus expanded reaches
@@ -406,12 +407,18 @@ function renderResults(keepPlace = false) {
 
   promise.clear();
   nearby.clear();
+  loggedHere.clear();
   for (const g of groups) {
     promise.set(g.key, groupScore(g, groupModel));
     nearby.set(g.key, nearestLogged(g, known));
+    const on = loggedOn(g, known);
+    if (on.length) loggedHere.set(g.key, on.map((k) => k.name));
   }
   if (el<HTMLInputElement>('hideLogged').checked) {
-    groups = groups.filter((g) => (nearby.get(g.key) ?? Infinity) > LOGGED_RADIUS);
+    // Overlap first — a canyon whose window sits on this water — with the
+    // distance as a fallback for entries that snapped to a neighbouring burn.
+    groups = groups.filter((g) => !loggedHere.has(g.key)
+      && (nearby.get(g.key) ?? Infinity) > LOGGED_RADIUS);
     // Set membership, not a scan per candidate: with nothing capped this runs
     // over tens of thousands of reaches and as many groups.
     const keep = new Set(groups.map((g) => g.key));
@@ -499,7 +506,7 @@ function renderRow(row: Row, i: number): HTMLLIElement {
       <span class="grad">${(group.best.gradient * 100).toFixed(0)}%</span>
       <span class="meta">${groupModel
         ? `<span class="promise">promise ${(promise.get(group.key)! * 100).toFixed(0)}</span> · `
-        : ''}${(nearby.get(group.key) ?? Infinity) <= LOGGED_RADIUS ? '<span class="tag mini">logged</span> · ' : ''}${multi
+        : ''}${loggedTag(group)}${multi
         ? `${n} reaches · ${group.steepDrop.toFixed(0)} m of drop in
            ${(group.steepLength / 1000).toFixed(1)} km of steep channel ·
            ${group.spanDrop.toFixed(0)} m over a ${(group.spanLength / 1000).toFixed(1)} km span`
@@ -560,8 +567,22 @@ function selectCandidate(id: string, fly: boolean) {
 function contextOf(group: Group) {
   return {
     promise: groupModel ? (promise.get(group.key) ?? 0) : null,
-    logged: (nearby.get(group.key) ?? Infinity) <= LOGGED_RADIUS,
+    logged: loggedHere.has(group.key)
+      || (nearby.get(group.key) ?? Infinity) <= LOGGED_RADIUS,
+    loggedNames: loggedHere.get(group.key),
   };
+}
+
+/** The "logged" tag for a list row: which canyons sit on this water when the
+ *  windows say so, the bare tag when only proximity does. */
+function loggedTag(group: Group): string {
+  const names = loggedHere.get(group.key);
+  if (names?.length) {
+    return `<span class="tag mini">logged: ${esc(names.slice(0, 2).join(', '))}` +
+      (names.length > 2 ? ` +${names.length - 2}` : '') + '</span> · ';
+  }
+  return (nearby.get(group.key) ?? Infinity) <= LOGGED_RADIUS
+    ? '<span class="tag mini">logged</span> · ' : '';
 }
 
 function select(idx: number, fly: boolean) {
@@ -644,6 +665,15 @@ function selectKnown(idx: number, fly: boolean) {
       ? `<a target="_blank" rel="noreferrer" href="${safeUrl(k.url)}">Canyon Log</a>`
       : '',
   }, fly);
+
+  // Tie the canyon back to its watercourse in the list: highlight the group
+  // whose reaches its window sits on, so the list shows where it belongs — and
+  // clears cleanly when the current filters leave its water out. Best effort in
+  // the same way the saved-selection restore is.
+  const at = rows.findIndex((r) => !r.cand && loggedOn(r.group, [k]).length > 0);
+  selected = at;
+  if (at >= 0) ensureRendered(at);
+  highlight(at);
 }
 
 interface Detail {
@@ -779,8 +809,9 @@ function tryRestoreSelection() {
   if (!sel) return;
   // The map's load can beat the worker's first results, and boot() can still
   // be fetching known.json: keep the selection pending until there is
-  // something to select into, or it is silently dropped.
-  if (sel.kind === 'known' ? !known.length : !rows.length) return;
+  // something to select into, or it is silently dropped. A known canyon needs
+  // both — its list highlight lands on a group row.
+  if (!rows.length || (sel.kind === 'known' && !known.length)) return;
   pendingSelection = null;
   if (sel.kind === 'reach') {
     selectCandidate(sel.id, false);

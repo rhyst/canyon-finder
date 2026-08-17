@@ -156,3 +156,22 @@ def chain_lonlat(c: dict, dlon: np.ndarray, dlat: np.ndarray):
     lon = (c["lon0"] + np.cumsum(dlon[s].astype(np.int64)) - int(dlon[s][0])) / 1e7
     lat = (c["lat0"] + np.cumsum(dlat[s].astype(np.int64)) - int(dlat[s][0])) / 1e7
     return lon, lat
+
+
+def name_at(chain: dict, i: int) -> str:
+    """The watercourse name carried at sample `i`, as the app reports it.
+
+    A chain is one traced watercourse, but OS Open Rivers can name stretches of
+    it differently — the Burn of Sorrow becomes the Dollar Burn at the confluence
+    below Castle Campbell, while the app (and everything derived from it) treats
+    those as separate watercourses. The chain-level `name` is only the dominant
+    run, so anything describing a window of samples must be named per-run or it
+    points at the wrong stretch.
+    """
+    name = chain["name"]
+    for start, run_name in chain["runs"]:
+        if start > i:
+            break
+        if run_name:
+            name = run_name
+    return name
