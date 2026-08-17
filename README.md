@@ -5,6 +5,9 @@ much channel, with how much water feeding it.
 
 **[Open the map →](https://rhyst.github.io/canyon-finder/)**
 
+![Canyon Finder: the map with steep reaches coloured by gradient, the watercourse
+list, and the elevation profile of a selected reach](docs/screenshot.jpg)
+
 ## Warning
 
 🚨 VIBE CODED 🚨 
@@ -15,7 +18,7 @@ Everything in this project is pure slop! Use for entertainment purposes only!
 
 - Drag the **gradient, length and drainage** sliders; the list and map re-search all of
   Scotland in a fraction of a second, entirely in your browser.
-- **Presets** set everything at once — *Calibrated shortlist* is the default and finds
+- **Presets** set everything at once. *Calibrated shortlist* is the default and finds
   55 of the 91 graded descents logged on Canyon Log; *Wide net* finds 81.
 - Reaches are coloured by steepness. The list groups them by watercourse, best first.
 - **Dashed green lines** are canyons people have logged and rated; **grey** are ones
@@ -41,14 +44,13 @@ mise run test           # web tests + pipeline selftests
 ```
 
 The compiled dataset is committed in `web/public/data/`, so the app runs with no data
-build. Rebuilding it from the public sources is a local pipeline job — see
+build. Rebuilding it from the public sources is a local pipeline job. See
 [docs/architecture.md](docs/architecture.md).
 
-## How the data pipeline works (in plain terms)
+## How the pipeline works
 
 1. **Trace the rivers.** The national watercourse network is followed downstream from
-   source to sea, producing a continuous profile for each river — the line you draw on
-   a map, with a name where one exists.
+   source to sea, so each river reads as one continuous line with a name where one exists.
 2. **Sample the terrain.** Each river is measured every 25 m: height, steepness, how
    steep the valley sides are around it, and how much land drains into it (worked out
    by simulating rain flowing downhill across the whole country).
@@ -58,19 +60,19 @@ build. Rebuilding it from the public sources is a local pipeline job — see
    river profiles, so the tool can measure what a rated canyon actually looks like in
    the data.
 5. **Fit a score.** The measured descents are compared against ordinary steep burns to
-   learn what separates them — then the whole country is compressed into a ~22 MB file
-   the site downloads once and searches locally.
+   learn what separates them. The result is compressed into a ~22 MB file the site
+   downloads once and searches locally.
 
 Full technical detail, measurements and caveats: [docs/architecture.md](docs/architecture.md).
 
-## Promise, the score on every watercourse
+## The promise score
 
-*Promise* is the only custom metric. It ranks watercourses by how much they resemble
-the descents people have actually logged, rather than by steepness alone — steepness
-finds streams, water and enclosure find canyons.
+Promise is the only custom metric. It is a score fitted on the logged descents.
+Steepness alone does not tell a good canyon from a steep burn: the 0-star duds in the
+logged data are steeper than the rated descents. What separates them is water (how
+much catchment feeds the reach) and enclosure (how far the valley sides close in),
+so the score weights those.
 
-It reads as a position on the scale set by the logged descents themselves:
-**50 is a typical logged descent**, 100 is a dead ringer for the best of them, 0 is
-unremarkable water. Promise is a starting point for a weekend, not a verdict — the top
-of the list mixes documented gorges nobody has logged with water that genuinely deserves
-a look.
+The scale is anchored on the logged descents: **50 is a typical logged descent**, 100
+the best of them, 0 unremarkable water. Most of the top of the list is water nobody
+has logged, so treat it as a shortlist rather than a guide.
