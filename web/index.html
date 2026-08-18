@@ -9,8 +9,12 @@
   <body>
     <aside id="controls">
       <header>
-        <h1>Canyon Finder</h1>
-        <p class="sub">Steep watercourse reaches in Scotland</p>
+        <div>
+          <h1>Canyon Finder</h1>
+          <p class="sub">Steep watercourse reaches in Scotland</p>
+        </div>
+        <button id="closeFilters" class="mobile-only icon-button" type="button"
+          aria-label="Close filters">×</button>
       </header>
 
       <section class="controls">
@@ -131,13 +135,21 @@
       </footer>
     </aside>
 
+    <div id="drawerScrim" aria-hidden="true"></div>
+
     <main id="stage">
       <div id="map"></div>
+      <button id="openFilters" class="mobile-only mobile-action" type="button"
+        aria-controls="controls" aria-expanded="false">Filters</button>
       <div id="detail" hidden></div>
     </main>
 
     <aside id="list">
-      <div id="status" class="status">Loading data…</div>
+      <div class="list-head">
+        <div id="status" class="status">Loading data…</div>
+        <button id="toggleList" class="mobile-only icon-button" type="button"
+          aria-controls="results" aria-expanded="true" aria-label="Minimise canyon list">⌄</button>
+      </div>
       <ul id="results"></ul>
     </aside>
 

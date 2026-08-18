@@ -80,6 +80,43 @@ const map = new MapLibreMap({
 map.addControl(new NavigationControl({ visualizePitch: false }), 'top-right');
 map.addControl(new ScaleControl({ unit: 'metric' }));
 
+const mobileLayout = window.matchMedia('(max-width: 860px)');
+const openFilters = el<HTMLButtonElement>('openFilters');
+const closeFilters = el<HTMLButtonElement>('closeFilters');
+const listPanel = el<HTMLElement>('list');
+const toggleList = el<HTMLButtonElement>('toggleList');
+
+function setFiltersOpen(open: boolean, restoreFocus = true) {
+  document.body.classList.toggle('filters-open', open);
+  openFilters.setAttribute('aria-expanded', String(open));
+  if (open) closeFilters.focus();
+  else if (restoreFocus && mobileLayout.matches) openFilters.focus();
+}
+
+function setListCollapsed(collapsed: boolean) {
+  listPanel.classList.toggle('collapsed', collapsed);
+  document.body.classList.toggle('list-collapsed', collapsed);
+  toggleList.setAttribute('aria-expanded', String(!collapsed));
+  toggleList.setAttribute('aria-label', collapsed ? 'Expand canyon list' : 'Minimise canyon list');
+  toggleList.textContent = collapsed ? '⌃' : '⌄';
+}
+
+openFilters.addEventListener('click', () => setFiltersOpen(true));
+closeFilters.addEventListener('click', () => setFiltersOpen(false));
+el('drawerScrim').addEventListener('click', () => setFiltersOpen(false));
+toggleList.addEventListener('click', () => setListCollapsed(!listPanel.classList.contains('collapsed')));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('filters-open')) {
+    setFiltersOpen(false);
+  }
+});
+mobileLayout.addEventListener('change', (e) => {
+  if (!e.matches) {
+    setFiltersOpen(false, false);
+    setListCollapsed(false);
+  }
+});
+
 let payload: Payload;
 let known: KnownCanyon[] = []; // community-logged descents, for calibration
 let graded: KnownCanyon[] = []; // the graded ones: catching a 0-star is no virtue
