@@ -312,6 +312,7 @@ footer p { margin: 0 0 6px; }
   padding: 0 4px;
 }
 
+.tag.dam, #detail .tag.dam { background: #d98d3f; }
 #detail .tag.alt { background: var(--accent); }
 #detail .tag.dud { background: #8b97a3; }
 

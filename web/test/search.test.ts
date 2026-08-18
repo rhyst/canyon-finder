@@ -193,6 +193,28 @@ check('the search recovers most logged canyons', () => {
   assert.ok(recall > 0.8, `recall ${(recall * 100).toFixed(0)}%`);
 });
 
+check('mapped dams flag their spillway reaches', () => {
+  const wide = search(query({ minGradient: 0.08, minLength: 200, maxLength: 2000,
+                              minDrain: 1 }));
+  const examples: [number, number, string][] = [
+    [6995, 235, 'Upper Glendevon'],
+    [6995, 348, 'Lower Glendevon'],
+    [7004, 107, 'Glensherup'],
+  ];
+  for (const [chain, sample, name] of examples) {
+    assert.ok(wide.candidates.some((c) => c.chain === chain && c.i <= sample
+      && c.j >= sample && c.dam), `${name} was not flagged as a dam`);
+  }
+  const smallStructures: [number, number, string][] = [
+    [7010, 20, 'Castleton Burn'],
+    [7380, 37, 'Allt an Tuim Bhric'],
+  ];
+  for (const [chain, sample, name] of smallStructures) {
+    assert.ok(wide.candidates.some((c) => c.chain === chain && c.i <= sample
+      && c.j >= sample && !c.dam), `${name} was incorrectly flagged`);
+  }
+});
+
 check("Canyon Log's category names still match what the app keys off", () => {
   const seen = new Set(logged.map((k) => k.category));
   assert.ok(seen.has(ZERO_STAR), `no "${ZERO_STAR}" entries — category renamed upstream?`);

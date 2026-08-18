@@ -120,6 +120,7 @@ mobileLayout.addEventListener('change', (e) => {
 let payload: Payload;
 let known: KnownCanyon[] = []; // community-logged descents, for calibration
 let graded: KnownCanyon[] = []; // the graded ones: catching a 0-star is no virtue
+const knownByChain = new Map<number, KnownCanyon[]>(); // real descents override a dam proximity flag
 let lidarGeometry: unknown = null; // coverage outline, fetched with the payload
 let scoreModel: ScoreModel | null = null;
 let groupModel: GroupModel | null = null;
@@ -383,6 +384,10 @@ async function boot() {
     lat: k.coords[0][1],
   }));
   graded = known.filter(isGraded);
+  knownByChain.clear();
+  for (const k of known.filter((entry) => !isDud(entry))) {
+    knownByChain.set(k.chain, [...(knownByChain.get(k.chain) ?? []), k]);
+  }
   if (map.getSource('known')) {
     (map.getSource('known') as GeoJSONSource).setData(knownGeoJSON() as never);
     (map.getSource('known-points') as GeoJSONSource).setData(knownPointGeoJSON() as never);
@@ -468,6 +473,13 @@ let sentinel: HTMLLIElement | null = null;
 function renderResults(keepPlace = false) {
   const q = readQuery();
   let list = results;
+  // Proximity is deliberately reversible and never suppresses a non-dud
+  // Canyon Log descent: a real canyon can sit immediately below a reservoir.
+  const hideDam = (c: Candidate) => c.dam
+    && !(knownByChain.get(c.chain) ?? []).some((k) => c.i <= k.j && c.j >= k.i);
+  const damsHidden = el<HTMLInputElement>('hideDams').checked
+    ? list.filter(hideDam).length : 0;
+  if (damsHidden) list = list.filter((c) => !hideDam(c));
   if (el<HTMLInputElement>('viewOnly').checked) {
     const b = map.getBounds();
     list = list.filter((c) => b.contains([c.lon, c.lat]));
@@ -504,6 +516,7 @@ function renderResults(keepPlace = false) {
   el('status').innerHTML =
     `${groups.length.toLocaleString()} watercourses · ` +
     `${view.length.toLocaleString()} reaches · ${took}` +
+    (damsHidden ? ` · ${damsHidden.toLocaleString()} large-dam reaches hidden` : '') +
     (stats.truncated ? ' · <span class="trunc">search truncated</span>' : '') +
     (graded.length ? ` · <span class="known-hit">catches ${hit}/${graded.length} ` +
       `logged descents</span>` : '') +
@@ -565,7 +578,7 @@ function renderRow(row: Row, i: number): HTMLLIElement {
     li.innerHTML = `
       <span class="name">${cand.drop.toFixed(0)} m over ${cand.length.toFixed(0)} m</span>
       <span class="grad">${(cand.gradient * 100).toFixed(0)}%</span>
-      <span class="meta">steepest 100 m ${(cand.steepest * 100).toFixed(0)}% ·
+      <span class="meta">${cand.dam ? '<span class="tag mini dam">dam</span> · ' : ''}steepest 100 m ${(cand.steepest * 100).toFixed(0)}% ·
         confinement ${cand.confine.toFixed(0)} m · ${fmtArea(cand.drain)} draining ·
         top ${cand.top.toFixed(0)} m</span>`;
   } else {
@@ -584,7 +597,7 @@ function renderRow(row: Row, i: number): HTMLLIElement {
            ${group.spanDrop.toFixed(0)} m over a ${(group.spanLength / 1000).toFixed(1)} km span`
         : `${group.best.drop.toFixed(0)} m over ${group.best.length.toFixed(0)} m ·
            steepest 100 m ${(group.best.steepest * 100).toFixed(0)}%`} ·
-        ${fmtArea(group.best.drain)} draining · ${group.best.dem} DEM</span>`;
+        ${group.best.dam ? '<span class="tag mini dam">dam</span> · ' : ''}${fmtArea(group.best.drain)} draining · ${group.best.dem} DEM</span>`;
   }
 
   li.onclick = (e) => {
@@ -674,7 +687,7 @@ function select(idx: number) {
       coords: [cand.coords],
       title: `${group.name}` + (group.members.length > 1
         ? ` <span class="tag alt">reach ${at} of ${group.members.length}</span>`
-        : ''),
+        : '') + (cand.dam ? ' <span class="tag dam">dam</span>' : ''),
       context: watercourseLine(group, contextOf(group)),
       stats: reachLine(cand),
       chain: cand.chain,
@@ -850,7 +863,7 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
 /** The filter panel, by element id. Checkboxes save as 'true'/'false'. */
 const FILTER_IDS = [
   'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrain', 'maxDrain',
-  'minConf', 'minAlt', 'sort', 'viewOnly', 'hideLogged', 'showKnown', 'showLidar', 'basemap',
+  'minConf', 'minAlt', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'showKnown', 'showLidar', 'basemap',
 ];
 
 function saveFilters() {
@@ -918,6 +931,7 @@ document.querySelectorAll('input[type=range]').forEach((input) => {
 el('sort').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('viewOnly').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('hideLogged').addEventListener('change', () => { saveFilters(); renderResults(); });
+el('hideDams').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('showKnown').addEventListener('change', (e) => {
   saveFilters();
   const on = (e.target as HTMLInputElement).checked ? 'visible' : 'none';

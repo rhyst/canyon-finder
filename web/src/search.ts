@@ -226,6 +226,7 @@ export function search(q: Query): {
       const catchment = up[o + i] / 10;
       const area = drain[o + i];
       const confine = windowConfine(i, j);
+      const dam = c.dams?.some(([from, to]) => i <= to && j >= from) ?? false;
       out.push({
         chain: ci,
         i,
@@ -238,6 +239,7 @@ export function search(q: Query): {
         catchment,
         drain: area,
         confine,
+        dam,
         score: prospect({
           gradient: drop / length,
           catchment_km: catchment,

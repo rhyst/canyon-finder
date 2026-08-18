@@ -20,6 +20,7 @@ web/        interactive map (Vite + MapLibre + a Web Worker doing the search)
 | Watercourse network | [OS Open Rivers](https://docs.os.uk/os-downloads/products/water-portfolio/os-open-rivers) (GeoPackage, 52 MB) | OGL v3 | Topological link/node network with flow direction — gives connected channels and catchment accumulation for free. 63,210 km in Scotland. |
 | National elevation | [OS Terrain 50](https://docs.os.uk/os-downloads/products/land-and-terrain-portfolio/os-terrain-50) (ASCII grid, 162 MB) | OGL v3 | The only open, genuinely bare-earth DTM covering all of Scotland. 50 m post spacing. |
 | High-res elevation | [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) via `s3://srsp-open-data` | OGL v3 (some phase-2 LAZ is non-commercial) | 0.5–2 m DTMs as cloud-optimised GeoTIFFs, read over HTTP range requests. Patchy coverage — see below. |
+| Dam structures | [OpenStreetMap](https://www.openstreetmap.org/) | ODbL | Line features tagged `waterway=dam` or `man_made=dam`; crests at least 100 m long flag likely spillways and embankment slopes. |
 | Country outline | Natural Earth 10m map subunits | Public domain | Clips the payload to Scotland. |
 | Known descents | [Canyon Log](https://canyonlog.org/map/) via `wp-json/mapster-wp-maps/map?id=17437` | No stated licence — credit it, ask before redistributing | 146 community-logged Scottish canyons, snapped onto our profiles. Calibrates the thresholds and measures recall. |
 
@@ -61,7 +62,8 @@ uv run python -m canyon.build --bbox 270000 755000 295000 780000   # one region
 uv run python -m canyon.validate                   # check against known venues
 uv run python -m canyon.coverage                   # LiDAR coverage of the shortlist
 uv run python -m canyon.refine --bbox 283000 692000 302000 704000  # LiDAR re-profile
-uv run python -m canyon.lidarmap                     # coverage outline -> lidar.json
+uv run python -m canyon.lidarmap                   # coverage outline -> lidar.json
+uv run python -m canyon.dams                       # OSM dams -> profile flags
 uv run python -m canyon.known                      # logged canyons -> known.json
 uv run python -m canyon.watershed                  # drainage area per sample
 uv run python -m canyon.watershed --selftest       # routing on known grids
@@ -86,6 +88,14 @@ What `build` does:
    confinement (uint8 m, written last so it cannot misalign the int16 arrays) into
    `profiles.bin`. `canyon.watershed` fills the drainage array in afterwards, the way
    `refine` rewrites elevation.
+
+`canyon.dams` fetches Scotland's mapped dam lines from OpenStreetMap, keeps crests at
+least 100 m long, and marks profile samples within 150 m. This excludes tiny weirs and
+intakes whose downstream burns remain useful. The browser hides candidate windows
+overlapping those runs by default, except non-dud Canyon Log descents, but the switch
+remains reversible because OSM can be incomplete or occasionally wrong. Reservoir outlets alone
+are deliberately not used: natural loch
+outlets include real logged canyons.
 
 `refine` replaces those profiles with LiDAR ones where tiles exist. It samples the
 **minimum elevation within 12 m** of each point rather than the point itself: OS Open

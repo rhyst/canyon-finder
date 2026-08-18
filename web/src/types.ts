@@ -3,6 +3,8 @@ export interface ChainMeta {
   n: number;
   name: string;
   runs: [number, string][];
+  /** Inclusive sample runs within the mapped dam buffer. */
+  dams?: [number, number][];
   screen: number[];
   drain0?: number;
   top: number;
@@ -68,6 +70,7 @@ export interface Candidate {
   catchment: number; // km of watercourse upstream of the top
   drain: number; // km² draining to the top of the reach
   confine: number; // mean rise of the lower valley side 100 m out, metres
+  dam?: boolean; // overlaps a mapped dam or its immediate spillway
   score: number; // prospect score; higher ranks more canyon-like
   top: number;
   bottom: number;

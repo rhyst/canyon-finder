@@ -34,6 +34,7 @@ Everything in this project is pure slop! Use for entertainment purposes only!
 | --- | --- | --- |
 | Watercourses | [OS Open Rivers](https://os.uk/products/os-open-rivers) | 63,210 km of named and unnamed channels, with flow direction. © Ordnance Survey, OGL v3. |
 | Elevation | [OS Terrain 50](https://os.uk/products/os-terrain-50) + [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) | 50 m national baseline, refined to ~1 m where LiDAR exists. OGL v3. |
+| Dam structures | [OpenStreetMap](https://www.openstreetmap.org/) | Large mapped dams flag likely spillways and embankment slopes. © OpenStreetMap contributors, ODbL. |
 | Known descents | [Canyon Log](https://canyonlog.org/map/) | 146 community-logged Scottish canyons, reproduced with permission. Calibrates the filters and the scoring. |
 
 ## Developing locally
@@ -58,10 +59,12 @@ build. Rebuilding it from the public sources is a local pipeline job. See
    by simulating rain flowing downhill across the whole country).
 3. **Sharpen where possible.** Where high-resolution LiDAR has been flown, it replaces
    the coarse national elevation along that stretch.
-4. **Record the canyons people have descended.** Community logs are matched onto the
+4. **Flag large dams.** Reaches beside mapped dam crests at least 100 m long are marked
+   so likely spillways and embankment slopes can be hidden without deleting them.
+5. **Record the canyons people have descended.** Community logs are matched onto the
    river profiles, so the tool can measure what a rated canyon actually looks like in
    the data.
-5. **Fit a score.** The measured descents are compared against ordinary steep burns to
+6. **Fit a score.** The measured descents are compared against ordinary steep burns to
    learn what separates them. The result is compressed into a ~22 MB file the site
    downloads once and searches locally.
 
