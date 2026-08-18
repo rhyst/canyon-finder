@@ -29,15 +29,18 @@ the raw inputs into `data/raw/`.
 ### LiDAR cannot be the primary elevation source
 
 Coverage was flown for flood risk, power corridors and heritage sites, so it lands in the
-Central Belt and Borders rather than the Highlands. Measured against this project's own
-shortlist (`python -m canyon.coverage`):
+Central Belt and Borders rather than the Highlands. Coverage comes from the portal's
+`scotland:lidar-aggregate` WMS mask, not the rectangular DTM file footprints: old Phase
+1/2 files are often mostly nodata, so counting their whole bounds badly overstates it.
+Measured against this project's own shortlist (`python -m canyon.coverage`):
 
 ```
 watercourses with a 400 m window at or above 12%: 5,646
-  LiDAR none               3,274   58.0%
-  LiDAR full, 1 m          1,343   23.8%
-  LiDAR full, 0.5 m          792   14.0%
-  LiDAR partial              237    4.2%
+  LiDAR none               4,347   77.0%
+  LiDAR full, 0.5 m          551    9.8%
+  LiDAR partial              445    7.9%
+  LiDAR full, 1 m            278    4.9%
+  LiDAR full, other           25    0.4%
 ```
 
 Skye (NG) has no coverage at all; Lochaber (NN) has a handful of tiles. The Ochils are a
