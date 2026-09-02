@@ -80,6 +80,25 @@ export interface Candidate {
   coords: [number, number][];
 }
 
+/** A community visit report, from a data/visits/ pull request.
+ * See docs/feature-visits.md for the data flow. */
+export interface VisitReport {
+  author: string;
+  date: string; // YYYY-MM-DD
+  /** 0 = not worth it, 1-4 = worth it (Canyon Log's vocabulary). */
+  stars: number;
+  name?: string;
+  description?: string;
+  grade?: string;
+  pitches?: number;
+  highestPitchM?: number;
+  /** The reporter's measured values. Display-only: search and fit use the
+   * pipeline's measurements. */
+  corrections?: { drop_m?: number; length_m?: number };
+  images?: { file: string; caption?: string; url: string }[];
+  links?: string[];
+}
+
 /** A community-logged descent from Canyon Log, snapped onto our profiles. */
 export interface KnownCanyon {
   name: string;
@@ -99,4 +118,8 @@ export interface KnownCanyon {
   lon: number;
   lat: number;
   coords: [number, number][];
+  /** Community visit reports: attached to a logged entry, or its own entry. */
+  visits?: VisitReport[];
+  /** Set on entries created by the visit stage rather than the Canyon Log stage. */
+  source?: string;
 }

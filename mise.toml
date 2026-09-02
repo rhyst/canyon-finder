@@ -136,7 +136,7 @@ run = "npm run preview"
 [tasks."web:test"]
 description = "Search-engine tests (reads web/public/data payloads)"
 dir = "web"
-run = "node --experimental-strip-types test/search.test.ts"
+run = "node --experimental-strip-types test/search.test.ts && node --experimental-strip-types test/visits.test.ts"
 
 [tasks."web:why"]
 description = "Explain a watercourse: its reaches, steepest window, and rank under each preset"

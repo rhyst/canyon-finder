@@ -20,7 +20,7 @@ import {
   buildGroups, buildRows, candId, findRow, groupOf, groupScore, loggedOn, nearestLogged,
   type Group, type GroupModel, type Row,
 } from './grouping';
-import { covered, isDud, isGraded } from './canyonlog';
+import { covered, isDud, isGraded, reportedStats, visitReportsHtml, VISIT_SOURCE } from './canyonlog';
 import { esc, fmtArea, reachLine, safeUrl, watercourseLine } from './format';
 import { loadState, presetFor, saveState, type SavedSelection } from './state';
 
@@ -733,19 +733,28 @@ function selectKnown(idx: number) {
   if (!k) return;
   selected = -1;
   saveState({ selected: { kind: 'known', id: `${k.chain}:${k.i}:${k.j}` } });
+  const r = reportedStats(k);
   const grade = k.grade ? `${esc(k.grade)} · ` : '';
   const dud = isDud(k);
+  const visitEntry = k.source === VISIT_SOURCE;
+  const cat = dud ? 'visited, reported not worth it'
+    : visitEntry ? 'visit report'
+    : esc(k.category) || 'ungraded';
   showDetail({
     coords: [k.coords],
     title: `${esc(k.name)} <span class="tag${dud ? ' dud' : ''}">` +
-      `${dud ? '0 stars' : 'logged'}</span>`,
-    stats: `${grade}${dud ? 'visited, reported not worth it' : esc(k.category) || 'ungraded'}` +
-      ` · measured ` +
-      `${(k.gradient * 100).toFixed(1)}% over ${k.length.toFixed(0)} m ` +
-      `(${k.drop.toFixed(0)} m) on ${esc(k.watercourse) || 'an unnamed burn'}`,
+      `${dud ? '0 stars' : visitEntry ? 'visit' : 'logged'}</span>`,
+    stats: `${grade}${cat} · ` +
+      `${(r.gradient * 100).toFixed(1)}% over ${r.length.toFixed(0)} m ` +
+      `(${r.drop.toFixed(0)} m)` +
+      (r.corrected
+        ? ` — model: ${(k.gradient * 100).toFixed(1)}% over ${k.length.toFixed(0)} m`
+        : ' measured') +
+      ` on ${esc(k.watercourse) || 'an unnamed burn'}`,
     chain: k.chain,
     i: k.i,
     j: k.j,
+    visitsHtml: k.visits?.length ? visitReportsHtml(k) : '',
     extra: safeUrl(k.url)
       ? `<a target="_blank" rel="noreferrer" href="${safeUrl(k.url)}">Canyon Log</a>`
       : '',
@@ -769,6 +778,7 @@ interface Detail {
   chain: number;
   i: number;
   j: number;
+  visitsHtml?: string; // community visit reports, when the entry has them
   extra: string;
 }
 
@@ -799,6 +809,7 @@ function showDetail(info: Detail) {
     ${info.context ? `<div class="stats context">${info.context}</div>` : ''}
     <div class="stats">${info.stats}</div>
     <div id="chart"></div>
+    ${info.visitsHtml ? `<div class="visits">${info.visitsHtml}</div>` : ''}
     <div class="links">
       ${info.extra}
       <a target="_blank" rel="noreferrer"
