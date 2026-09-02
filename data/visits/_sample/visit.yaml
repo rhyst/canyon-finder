@@ -1,0 +1,30 @@
+# Template for a visit report. Copy this directory to
+# data/visits/<YYYY-MM-DD-kebab-slug>/ (e.g. 2026-08-15-allt-arrifish/),
+# fill it in, drop your photos next to this file, then run
+# `mise run pipeline:visits` and commit the regenerated output.
+# See docs/contributing-visits.md for the walkthrough.
+
+# --- required -------------------------------------------------------------
+
+author: Your Name
+date: 2026-08-15                # when you went
+location: [-5.4123, 56.8765]    # [lon, lat] — nearest point on the canyon
+stars: 3                        # 0 = dud, 1-4 = worth it
+
+# --- optional -------------------------------------------------------------
+
+name: Allt Arrifish             # used for new entries; logged canyons keep
+                                # their own name even when you attach to one
+description: |
+  Two solid abseils, big slab at the bottom.
+grade: WS2 A2                   # free text
+pitches: 3
+highest_pitch_m: 25
+corrections:                    # your measured values, if the model is wrong
+  drop_m: 40
+  length_m: 320
+images:                         # max 6, max 400 KB each (jpg/jpeg/png/webp)
+  - file: top.jpg
+    caption: Approach to the top
+links:
+  - url: https://example.org/notes

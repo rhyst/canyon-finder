@@ -1,6 +1,6 @@
 # Publishes the site to GitHub Pages. The compiled payload is committed to the
 # repo, so this never runs the data pipeline — that is a local, data-change-time
-# job (build -> refine -> watershed -> known -> analyse -> export-groups -> rank)
+# job (build -> refine -> watershed -> known -> visits -> analyse -> export-groups -> rank)
 # whose artifacts this build simply packages. Turn it on in repo Settings ->
 # Pages -> Build and deployment -> Source: GitHub Actions.
 name: deploy

@@ -16,6 +16,7 @@ import argparse
 import json
 import re
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -82,6 +83,76 @@ def best_reach(z: np.ndarray, hit: int, spacing: float,
     return best
 
 
+class SnapFailure(Exception):
+    """No watercourse sample within the snap radius."""
+
+
+@dataclass
+class SnapGrid:
+    """Per-sample lon/lat/chain over the whole payload, for nearest-sample snaps.
+
+    Built once per stage run; snapping a point is then a single hypot pass.
+    Shared by canyon.known and canyon.visits — the snap must stay one
+    implementation, so a logged canyon and a visit land on the same reach.
+    """
+
+    lon_all: np.ndarray
+    lat_all: np.ndarray
+    chain_of: np.ndarray
+
+
+def snap_grid(pay: payload.Payload) -> SnapGrid:
+    lon_all = np.empty(pay.total)
+    lat_all = np.empty(pay.total)
+    chain_of = np.empty(pay.total, dtype=np.int32)
+    for ci, c in enumerate(pay.meta["chains"]):
+        lo, la = chain_lonlat(c, pay.dlon, pay.dlat)
+        s = slice(c["o"], c["o"] + c["n"])
+        lon_all[s], lat_all[s], chain_of[s] = lo, la, ci
+    return SnapGrid(lon_all, lat_all, chain_of)
+
+
+def snap_location(pay: payload.Payload, grid: SnapGrid, lon: float, lat: float,
+                  min_len: float = 200, max_len: float = 1200,
+                  max_snap: float = 500) -> dict:
+    """Snap a point to the nearest watercourse sample and measure the reach.
+
+    Same window logic as the logged canyons: steepest 200-1200 m window around
+    the snap sample. Raises SnapFailure past max_snap — the point is not on a
+    mapped channel, or the reported location is wrong.
+    """
+    scale = np.cos(np.radians(lat))
+    d = np.hypot((grid.lon_all - lon) * scale * 111_320,
+                 (grid.lat_all - lat) * 110_540)
+    idx = int(np.argmin(d))
+    snap = float(d[idx])
+    if snap > max_snap:
+        raise SnapFailure(f"nearest watercourse {snap:.0f} m away")
+    ci = int(grid.chain_of[idx])
+    c = pay.meta["chains"][ci]
+    zc = pay.z[pay.chain(c)].astype(np.float32) / 10
+    hit = idx - c["o"]
+    i, j, grad = best_reach(zc, hit, pay.spacing, min_len, max_len)
+    lo, la = chain_lonlat(c, pay.dlon, pay.dlat)
+    return {
+        "snap_m": round(snap),
+        "chain": ci,
+        "i": i,
+        "j": j,
+        # The run name at the window start, not the chain's dominant name: a
+        # chain changes name mid-course (Burn of Sorrow -> Dollar Burn at the
+        # confluence), and the app groups reaches per-run, so the chain name
+        # ties a logged canyon to a stretch it does not sit on.
+        "watercourse": payload.name_at(c, i),
+        "gradient": round(float(grad), 4),
+        "drop": round(float(zc[i] - zc[j]), 1),
+        "length": (j - i) * pay.spacing,
+        "dem": c.get("dem", "50 m"),
+        "coords": [[round(float(lo[k]), 6), round(float(la[k]), 6)]
+                   for k in range(i, j + 1)],
+    }
+
+
 def main() -> None:
     root = Path(__file__).resolve().parents[2]
     p = argparse.ArgumentParser(description=__doc__)
@@ -100,7 +171,7 @@ def main() -> None:
                              fetch(a.work / "canyonlog.json", a.refresh)) if r]
     print(f"Canyon Log: {len(locations)} logged canyons worldwide")
 
-    scot = scotland(a.raw)
+    scot = scotland(a.raw, root / "data" / "boundary.scotland.geojson")
     to_bng = Transformer.from_crs(4326, 27700, always_xy=True)
     inside = []
     for r in locations:
@@ -110,48 +181,17 @@ def main() -> None:
     print(f"  {len(inside)} in Scotland")
 
     pay = payload.load(a.out)
-    meta, total, spacing = pay.meta, pay.total, pay.spacing
-    lon_all = np.empty(total)
-    lat_all = np.empty(total)
-    chain_of = np.empty(total, dtype=np.int32)
-    for ci, c in enumerate(meta["chains"]):
-        lo, la = chain_lonlat(c, pay.dlon, pay.dlat)
-        s = slice(c["o"], c["o"] + c["n"])
-        lon_all[s], lat_all[s], chain_of[s] = lo, la, ci
+    grid = snap_grid(pay)
 
     out = []
     for r in inside:
-        scale = np.cos(np.radians(r["lat"]))
-        d = np.hypot((lon_all - r["lon"]) * scale * 111_320, (lat_all - r["lat"]) * 110_540)
-        idx = int(np.argmin(d))
-        snap = float(d[idx])
-        if snap > a.max_snap:
-            print(f"  ! {r['name']}: nearest watercourse {snap:.0f} m away, skipped")
+        try:
+            s = snap_location(pay, grid, r["lon"], r["lat"],
+                              a.min_len, a.max_len, a.max_snap)
+        except SnapFailure as e:
+            print(f"  ! {r['name']}: {e}, skipped")
             continue
-        ci = int(chain_of[idx])
-        c = meta["chains"][ci]
-        zc = pay.z[pay.chain(c)].astype(np.float32) / 10
-        hit = idx - c["o"]
-        i, j, grad = best_reach(zc, hit, spacing, a.min_len, a.max_len)
-        lo, la = chain_lonlat(c, pay.dlon, pay.dlat)
-        out.append({
-            **r,
-            "snap_m": round(snap),
-            "chain": ci,
-            "i": i,
-            "j": j,
-            # The run name at the window start, not the chain's dominant name:
-            # a chain changes name mid-course (Burn of Sorrow -> Dollar Burn at
-            # the confluence), and the app groups reaches per-run, so the chain
-            # name ties a logged canyon to a stretch it does not sit on.
-            "watercourse": payload.name_at(c, i),
-            "gradient": round(grad, 4),
-            "drop": round(float(zc[i] - zc[j]), 1),
-            "length": (j - i) * spacing,
-            "dem": c.get("dem", "50 m"),
-            "coords": [[round(float(lo[k]), 6), round(float(la[k]), 6)]
-                       for k in range(i, j + 1)],
-        })
+        out.append({**r, **s})
 
     out.sort(key=lambda r: -r["gradient"])
     (a.out / "known.json").write_text(json.dumps({

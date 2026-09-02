@@ -36,8 +36,8 @@ description = "Full build: recompile profiles from OS data, then build the web a
 depends = ["pipeline:build", "web:build"]
 
 [tasks.test]
-description = "Web search-engine tests + watershed routing selftest"
-depends = ["web:test", "pipeline:selftest"]
+description = "Web search-engine tests + pipeline selftests"
+depends = ["web:test", "pipeline:selftest", "pipeline:visits-selftest"]
 
 # ── pipeline ──────────────────────────────────────────────────────────────
 
@@ -95,6 +95,16 @@ run = "uv run python -m canyon.coverage"
 description = "Pull Canyon Log descents and snap them onto profiles (-> known.json)"
 dir = "pipeline"
 run = "uv run python -m canyon.known"
+
+[tasks."pipeline:visits"]
+description = "Validate community visits and merge them into known.json (+ copy images)"
+dir = "pipeline"
+run = "uv run python -m canyon.visits"
+
+[tasks."pipeline:visits-selftest"]
+description = "Visit validation/merge fixtures (no data needed)"
+dir = "pipeline"
+run = "uv run python -m canyon.visits --selftest"
 
 [tasks."pipeline:analyse"]
 description = "Compare graded descents vs 0-star vs background; fit score.json"

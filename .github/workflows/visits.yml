@@ -1,0 +1,44 @@
+# Checks pull requests that add or change community visits.
+#
+# The visits stage runs against the committed compiled payload — no raw OS
+# data needed, and the Scotland boundary comes from the committed
+# data/boundary.scotland.geojson cache. It regenerates known.json and the
+# image copies; the PR must already include those, so contributors run
+# `mise run pipeline:visits` locally and commit the output.
+name: visits
+
+on:
+  pull_request:
+    paths:
+      - "data/visits/**"
+      - "data/boundary.scotland.geojson"
+      - "pipeline/canyon/visits.py"
+      - "pipeline/canyon/boundary.py"
+      - "pipeline/canyon/known.py"
+      - "pipeline/pyproject.toml"
+      - "pipeline/uv.lock"
+      - ".github/workflows/visits.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+        working-directory: pipeline
+      - run: uv run python -m canyon.visits
+        working-directory: pipeline
+      - name: Regenerated artifacts must match the committed ones
+        run: |
+          stale=$(git status --porcelain -- web/public/data/known.json web/public/data/visits)
+          if [ -n "$stale" ]; then
+            echo "::error::generated visit artifacts are out of date"
+            git status --porcelain -- web/public/data/known.json web/public/data/visits
+            echo "Run 'mise run pipeline:visits' locally and include the regenerated"
+            echo "web/public/data/known.json and web/public/data/visits/ in the PR."
+            exit 1
+          fi

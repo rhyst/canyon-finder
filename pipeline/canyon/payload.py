@@ -64,7 +64,7 @@ def require_index(meta: dict, doc: dict, name: str) -> None:
     raise SystemExit(
         f"{name} was built against payload index {got or '(none recorded)'}, but "
         f"this payload is {want}. Re-run the pipeline in order:\n"
-        f"  build -> refine -> watershed -> known -> analyse -> export-groups -> rank")
+        f"  build -> refine -> watershed -> known -> visits -> analyse -> export-groups -> rank")
 
 
 @dataclass

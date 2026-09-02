@@ -36,6 +36,7 @@ Everything in this project is pure slop! Use for entertainment purposes only!
 | Elevation | [OS Terrain 50](https://os.uk/products/os-terrain-50) + [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) | 50 m national baseline, refined to ~1 m where LiDAR exists. OGL v3. |
 | Dam structures | [OpenStreetMap](https://www.openstreetmap.org/) | Large mapped dams flag likely spillways and embankment slopes. © OpenStreetMap contributors, ODbL. |
 | Known descents | [Canyon Log](https://canyonlog.org/map/) | 146 community-logged Scottish canyons, reproduced with permission. Calibrates the filters and the scoring. |
+| Visit reports | Community pull requests ([how to add yours](docs/contributing-visits.md)) | Static reports in `data/visits/` — stars (0–4), notes, photos, corrections — merged into `known.json` by the pipeline. Feed the scoring once a handful exist. |
 
 ## Developing locally
 
