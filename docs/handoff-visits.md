@@ -1,6 +1,6 @@
 # Handoff — community visit records
 
-**Status:** M1 done (stage, validation, selftest, CI, docs). M2–M4 next.
+**Status:** M1–M2 done. M3–M4 next.
 Design and rationale: `docs/feature-visits.md` (read that first). This doc is
 the working brief: what to build, where the code lives, and the traps.
 
@@ -169,7 +169,18 @@ byte-for-byte.
 snapped, in `known.json`, images copied), every fixture failure mode is
 caught, and CI red/greens on a test PR.
 
-### M2 — web display
+### M2 — web display ✅
+
+Done as planned, with one placement note: `visitReportsHtml` lives in
+`canyonlog.ts` (not `main.ts`) so the node tests can render hostile reports
+against it — same pattern as the `grouping.ts` line builders.
+
+The live-browser pass was not run: the sandbox's safety classifier refused
+to start a local preview server, and I did not route around it. Logic is
+covered by `web/test/visits.test.ts` (incl. full rendering of a hostile
+report) plus `tsc` + `vite build`. A human click-through is still worth
+doing on first real visits: `mise run pipeline:visits && mise run web:dev`.
+
 1. `types.ts` (`VisitReport` + the two optional `KnownCanyon` fields).
 2. `canyonlog.ts` vocabulary (see above) — check every call site of `isDud` /
    `isGraded` still means what it says.
