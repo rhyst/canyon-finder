@@ -177,7 +177,7 @@ map.on('load', () => {
   map.addSource('reaches', { type: 'geojson', data: empty as never });
   map.addSource('reach-points', { type: 'geojson', data: empty as never });
   map.addSource('picked', { type: 'geojson', data: empty as never });
-  map.addSource('picked-known', { type: 'geojson', data: empty as never });
+  map.addSource('picked-highlight', { type: 'geojson', data: empty as never });
   map.addSource('known', { type: 'geojson', data: knownGeoJSON() as never });
   map.addSource('known-points', { type: 'geojson', data: knownPointGeoJSON() as never });
 
@@ -283,12 +283,12 @@ map.on('load', () => {
       'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1, 11.5, 0],
     },
   });
-  // A selected canyon needs its own topmost overlay: its normal line becomes a
-  // dot at national zooms, and the selection must make the same handover.
+  // Every selection needs its own topmost blue overlay: normal lines become
+  // dots at national zooms, and the selection must make the same handover.
   map.addLayer({
-    id: 'picked-known-line',
+    id: 'picked-highlight-line',
     type: 'line',
-    source: 'picked-known',
+    source: 'picked-highlight',
     layout: ROUND,
     paint: {
       'line-color': '#4cc4ff',
@@ -297,9 +297,9 @@ map.on('load', () => {
     },
   });
   map.addLayer({
-    id: 'picked-known-dot',
+    id: 'picked-highlight-dot',
     type: 'circle',
-    source: 'picked-known',
+    source: 'picked-highlight',
     paint: {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 11, 9],
       'circle-color': '#4cc4ff',
@@ -775,7 +775,6 @@ function selectKnown(idx: number) {
     : esc(k.category) || 'ungraded';
   showDetail({
     coords: [k.coords],
-    known: true,
     title: `${esc(k.name)} <span class="tag${dud ? ' dud' : ''}">` +
       `${dud ? '0 stars' : visitEntry ? 'visit' : 'logged'}</span>`,
     stats: `${grade}${cat} · ` +
@@ -807,7 +806,6 @@ function selectKnown(idx: number) {
 
 interface Detail {
   coords: [number, number][][];
-  known?: boolean; // selected known canyon gets the blue line/dot overlay
   title: string;
   context?: string; // the watercourse the reach belongs to
   stats: string;
@@ -826,7 +824,7 @@ function showDetail(info: Detail) {
     properties: {},
   } as never);
 
-  const selectedKnown = info.known ? {
+  const selectedHighlight = {
     type: 'FeatureCollection',
     features: [
       {
@@ -843,8 +841,9 @@ function showDetail(info: Detail) {
         properties: {},
       },
     ],
-  } : empty;
-  (map.getSource('picked-known') as GeoJSONSource | undefined)?.setData(selectedKnown as never);
+  };
+  (map.getSource('picked-highlight') as GeoJSONSource | undefined)
+    ?.setData(selectedHighlight as never);
 
   const lons = flat.map((p) => p[0]);
   const lats = flat.map((p) => p[1]);
@@ -887,6 +886,10 @@ function showDetail(info: Detail) {
   };
   d.querySelector<HTMLButtonElement>('button.close')!.onclick = () => {
     d.hidden = true;
+    selected = -1;
+    (map.getSource('picked') as GeoJSONSource | undefined)?.setData(empty as never);
+    (map.getSource('picked-highlight') as GeoJSONSource | undefined)?.setData(empty as never);
+    highlight(-1);
     saveState({ selected: null });
   };
   d.querySelector<HTMLAnchorElement>('#copy')!.onclick = (e) => {
