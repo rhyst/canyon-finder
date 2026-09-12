@@ -68,10 +68,12 @@ export function watercourseLine(group: Group, ctx: Context): string {
     `${fmtArea(group.features.drain_km2)} draining`;
 }
 
-export function reachLine(c: Candidate): string {
-  return `${(c.gradient * 100).toFixed(1)}% over ${c.length.toFixed(0)} m · ` +
+export function reachLine(c: Candidate, promise: number | null = null): string {
+  const p = promise === null
+    ? ''
+    : `<span class="promise">reach promise ${(promise * 100).toFixed(0)}</span> · `;
+  return `${p}${(c.gradient * 100).toFixed(1)}% over ${c.length.toFixed(0)} m · ` +
     `${c.drop.toFixed(0)} m drop · steepest 100 m ${(c.steepest * 100).toFixed(0)}% · ` +
     `${c.top.toFixed(0)}→${c.bottom.toFixed(0)} m · ${fmtArea(c.drain)} draining · ` +
     `confinement ${c.confine.toFixed(0)} m · ${c.dem} DEM`;
 }
-

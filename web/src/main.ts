@@ -17,7 +17,8 @@ import type {
 } from './types';
 import { PRESETS } from './presets';
 import {
-  buildGroups, buildRows, candId, findRow, groupOf, groupScore, loggedOn, nearestLogged,
+  againstLogged, buildGroups, buildRows, candId, findRow, groupOf, groupScore, loggedOn,
+  nearestLogged,
   type Group, type GroupModel, type Row,
 } from './grouping';
 import { covered, isDud, isWorthwhile, reportedStats, visitReportsHtml, VISIT_SOURCE } from './canyonlog';
@@ -124,7 +125,7 @@ const knownByChain = new Map<number, KnownCanyon[]>(); // real descents override
 let lidarGeometry: unknown = null; // coverage outline, fetched with the payload
 let scoreModel: ScoreModel | null = null;
 let groupModel: GroupModel | null = null;
-const promise = new Map<string, number>(); // group key -> fitted probability
+const promise = new Map<string, number>(); // group key -> position against logged canyons
 const nearby = new Map<string, number>(); // group key -> metres to nearest logged
 const loggedHere = new Map<string, string[]>(); // group key -> logged canyons on it
 let results: Candidate[] = []; // everything the worker returned
@@ -601,11 +602,12 @@ function renderRow(row: Row, i: number): HTMLLIElement {
   const { group, cand } = row;
 
   if (cand) {
+    const rp = scoreModel ? againstLogged(cand.score, scoreModel.graded_scores) : null;
     li.className = 'reach';
     li.innerHTML = `
       <span class="name">${cand.drop.toFixed(0)} m over ${cand.length.toFixed(0)} m</span>
       <span class="grad">${(cand.gradient * 100).toFixed(0)}%</span>
-      <span class="meta">${cand.dam ? '<span class="tag mini dam">dam</span> · ' : ''}steepest 100 m ${(cand.steepest * 100).toFixed(0)}% ·
+      <span class="meta">${rp === null ? '' : `<span class="promise">reach promise ${(rp * 100).toFixed(0)}</span> · `}${cand.dam ? '<span class="tag mini dam">dam</span> · ' : ''}steepest 100 m ${(cand.steepest * 100).toFixed(0)}% ·
         confinement ${cand.confine.toFixed(0)} m · ${fmtArea(cand.drain)} draining ·
         top ${cand.top.toFixed(0)} m</span>`;
   } else {
@@ -685,6 +687,10 @@ function contextOf(group: Group) {
   };
 }
 
+function reachPromise(c: Candidate): number | null {
+  return scoreModel ? againstLogged(c.score, scoreModel.graded_scores) : null;
+}
+
 /** The "logged" tag for a list row: which canyons sit on this water when the
  *  windows say so, the bare tag when only proximity does. */
 function loggedTag(group: Group): string {
@@ -716,7 +722,7 @@ function select(idx: number) {
         ? ` <span class="tag alt">reach ${at} of ${group.members.length}</span>`
         : '') + (cand.dam ? ' <span class="tag dam">dam</span>' : ''),
       context: watercourseLine(group, contextOf(group)),
-      stats: reachLine(cand),
+      stats: reachLine(cand, reachPromise(cand)),
       chain: cand.chain,
       i: cand.i,
       j: cand.j,
@@ -730,8 +736,8 @@ function select(idx: number) {
       title: group.name,
       context: watercourseLine(group, contextOf(group)),
       stats: group.members.length > 1
-        ? `best reach: ${reachLine(group.best)}`
-        : reachLine(first),
+        ? `best reach: ${reachLine(group.best, reachPromise(group.best))}`
+        : reachLine(first, reachPromise(first)),
       chain: group.chain,
       i: first.i,
       j: last.j,

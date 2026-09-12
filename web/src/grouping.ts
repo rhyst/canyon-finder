@@ -145,7 +145,11 @@ export function findRow(rows: Row[], id: string): number {
 export function groupScore(g: Group, model: GroupModel | null): number {
   if (!model) return 0;
   const raw = groupLogOdds(g, model);
-  const q = model.graded_scores;
+  return againstLogged(raw, model.graded_scores);
+}
+
+/** Put a fitted raw score on the readable 0–1 scale anchored to logged canyons. */
+export function againstLogged(raw: number, q?: number[]): number {
   if (!q?.length) return 1 / (1 + Math.exp(-raw));
   if (raw <= q[0]) return 0;
   if (raw >= q[q.length - 1]) return 1;

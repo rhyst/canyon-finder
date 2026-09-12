@@ -35,6 +35,8 @@ export interface ScoreModel {
   mean: number[];
   sd: number[];
   weights: number[];
+  /** Fitted scores of logged reaches, ascending, for the visible 0–100 scale. */
+  graded_scores?: number[];
   auc_vs_background: number;
   auc_vs_zero_star: number;
   fitted_on: { graded: number; background: number };
@@ -71,7 +73,7 @@ export interface Candidate {
   drain: number; // km² draining to the top of the reach
   confine: number; // mean rise of the lower valley side 100 m out, metres
   dam?: boolean; // overlaps a mapped dam or its immediate spillway
-  score: number; // prospect score; higher ranks more canyon-like
+  score: number; // raw reach-model score; higher ranks more canyon-like
   top: number;
   bottom: number;
   dem: string;

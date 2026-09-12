@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { KNOWN_VENUES } from '../src/known.ts';
 import { decode, fillCoords, profile, search } from '../src/search.ts';
 import {
-  buildGroups, buildRows, candId, findRow, groupScore, loggedOn,
+  againstLogged, buildGroups, buildRows, candId, findRow, groupScore, loggedOn,
   type Group, type GroupModel,
 } from '../src/grouping.ts';
 import { GRADED, ZERO_STAR, covered, isDud, isGraded } from '../src/canyonlog.ts';
@@ -348,6 +348,22 @@ check('logged canyons sit high on the promise scale', () => {
   assert.ok(bgMedian < 5, `background median ${bgMedian.toFixed(0)} is not low`);
 });
 
+check('reach promise uses the logged-reach 0–100 scale', () => {
+  assert.equal(scoreModel.graded_scores.length, scoreModel.fitted_on.graded);
+  assert.equal(againstLogged(scoreModel.graded_scores[0], scoreModel.graded_scores), 0);
+  assert.equal(againstLogged(
+    scoreModel.graded_scores[scoreModel.graded_scores.length - 1],
+    scoreModel.graded_scores,
+  ), 1);
+  const middle = scoreModel.graded_scores[Math.floor(scoreModel.graded_scores.length / 2)];
+  assert.ok(Math.abs(againstLogged(middle, scoreModel.graded_scores) - 0.5) < 0.02);
+  const candidate = search(query()).candidates[0];
+  assert.match(
+    reachLine(candidate, againstLogged(candidate.score, scoreModel.graded_scores)),
+    /reach promise \d+<\/span> ·/,
+  );
+});
+
 check('specific well-known descents rank in the top few percent', () => {
   const scored = exported
     .map((r: Record<string, number | string>) => ({
@@ -430,7 +446,7 @@ check('the detail card renders real numbers for every watercourse', () => {
     const lines = [
       watercourseLine(g, { promise: groupScore(g, groupModel), logged: true }),
       watercourseLine(g, { promise: null, logged: false }),
-      ...g.members.map(reachLine),
+      ...g.members.map((c) => reachLine(c, againstLogged(c.score, scoreModel.graded_scores))),
     ];
     for (const line of lines) {
       if (/NaN|undefined|null|Infinity/.test(line)) bad.push(`${g.name}: ${line}`);

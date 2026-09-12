@@ -231,6 +231,9 @@ def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path,
     # 0-star is the comparison that matters: it is the one that says "worth it".
     water, cap, a_bg, a_rej, top, w, mu, sd = max(
         results, key=lambda r: (round(r[3], 3), r[2]))
+    graded = design(arrays, "graded", cap, water)
+    graded_z = (graded - mu) / sd
+    graded_raw = np.sort(np.column_stack([np.ones(len(graded_z)), graded_z]) @ w)
     print(f"  chose {water} capped at {cap:,.0f} — AUC {a_bg:.3f} vs background, "
           f"{a_rej:.3f} vs 0-star, top 2% holds {top * 100:.0f}% of graded")
     for n, c in zip(("gradient", f"log1p({water}, capped)", "confine_100m"), w[1:]):
@@ -246,6 +249,7 @@ def fit_score(arrays: dict[str, dict[str, np.ndarray]], out: Path,
         "mean": mu.tolist(),
         "sd": sd.tolist(),
         "weights": w.tolist(),
+        "graded_scores": [round(float(v), 4) for v in graded_raw],
         "fitted_on": {"graded": int(len(arrays["graded"]["gradient"])),
                       "background": int(len(arrays["background"]["gradient"]))},
         "auc_vs_background": round(float(a_bg), 3),

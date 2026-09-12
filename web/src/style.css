@@ -318,7 +318,7 @@ footer p { margin: 0 0 6px; }
 
 .status .trunc { color: #d98d3f; }
 .status .known-hit { color: #5ec98a; }
-#results .promise, footer .promise { color: #b39ddb; font-weight: 600; }
+#results .promise, #detail .promise, footer .promise { color: #b39ddb; font-weight: 600; }
 .tag.mini {
   font-size: 9px;
   text-transform: uppercase;
