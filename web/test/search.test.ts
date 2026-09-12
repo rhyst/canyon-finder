@@ -461,25 +461,34 @@ check('third-party strings cannot inject markup or a script url', () => {
   console.log(`      ${logged.filter((k) => k.url).length} logged urls all pass the allowlist`);
 });
 
-check('a watercourse is tagged logged exactly when a logged canyon sits on it', () => {
+check('a watercourse is tagged when a logged canyon overlaps or sits just upstream', () => {
   const graded = logged.filter(isGraded);
   const q = query({ minGradient: 0.08, minLength: 200, maxLength: 2000 });
   const candidates = search(q).candidates;
   const groups = buildGroups(candidates, 'drop', meta.spacing, null);
 
-  // The tag and the status count must agree: both are "a logged window overlaps
-  // a reach on this chain", so the sets must match exactly. A point distance
-  // used to decide the tag and missed canyons sitting right on the water.
+  // Every strictly covered canyon must be tagged. Tags may additionally carry
+  // a visit a short way downstream across an OS watercourse-name boundary.
   const id = (k: KnownCanyon) => `${k.chain}:${k.i}:${k.j}`;
-  const viaTag = new Set(groups.flatMap((g) => loggedOn(g, graded)).map(id));
+  const viaTag = new Set(groups.flatMap((g) => loggedOn(g, graded, meta.spacing)).map(id));
   const viaCount = new Set(covered(graded, candidates).map(id));
-  assert.deepEqual([...viaTag].sort(), [...viaCount].sort());
+  assert.ok([...viaCount].every((k) => viaTag.has(k)),
+    'a strictly covered canyon is missing its logged tag');
 
   // The case that motivated this: Dollar Canyon sits on the Burn of Sorrow run
   // of its chain, not the Dollar Burn one, and must be tagged there by name.
   const holder = groups.filter((g) =>
-    loggedOn(g, graded).some((k) => k.name === 'Dollar Canyon'));
+    loggedOn(g, graded, meta.spacing).some((k) => k.name === 'Dollar Canyon'));
   assert.deepEqual(holder.map((g) => g.name), ['Burn of Sorrow']);
+
+  // Falls of Glomach is on the Abhainn Gaorsaic run, 200 m before the first
+  // qualifying reach named Allt a' Ghlomaich. They are one traced channel and
+  // the downstream group must show that the water immediately above was logged.
+  const ghlomaich = groups.find((g) => g.name === "Allt a' Ghlomaich");
+  assert.ok(ghlomaich, "Allt a' Ghlomaich group missing");
+  assert.ok(loggedOn(ghlomaich, logged, meta.spacing)
+    .some((k) => k.name === 'Falls of Glomach'),
+  "Falls of Glomach is not associated with Allt a' Ghlomaich");
 });
 
 check('the logged-canyon count responds to every filter', () => {

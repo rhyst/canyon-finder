@@ -196,9 +196,10 @@ export function nearestLogged(
   return best;
 }
 
-/** The logged canyons sitting on this group's water: an entry counts when its
- *  window overlaps a member reach on the same chain — the same rule `covered`
- *  uses for the status count, so the tag and the count cannot disagree.
+/** The logged canyons associated with this group's water: an entry counts when
+ *  its window overlaps a member reach, or the group starts within 500 m
+ *  downstream on the same traced chain. The latter carries a visit across a
+ *  nearby OS name boundary without claiming kilometres of downstream river.
  *
  *  A point distance cannot do this job. The logged marker sits at the top of
  *  its window, the group's nearest sample is wherever its middle reach happens
@@ -207,7 +208,11 @@ export function nearestLogged(
 export function loggedOn<T extends { chain: number; i: number; j: number }>(
   g: Group,
   logged: T[],
+  spacing: number,
 ): T[] {
-  return logged.filter((k) =>
-    k.chain === g.chain && g.members.some((m) => m.i <= k.j && m.j >= k.i));
+  const first = Math.min(...g.members.map((m) => m.i));
+  return logged.filter((k) => k.chain === g.chain && (
+    g.members.some((m) => m.i <= k.j && m.j >= k.i)
+    || (first > k.j && (first - k.j) * spacing <= 500)
+  ));
 }

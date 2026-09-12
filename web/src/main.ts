@@ -522,7 +522,7 @@ function renderResults(keepPlace = false) {
   for (const g of groups) {
     promise.set(g.key, groupScore(g, groupModel));
     nearby.set(g.key, nearestLogged(g, known));
-    const on = loggedOn(g, known);
+    const on = loggedOn(g, known, payload.spacing);
     if (on.length) loggedHere.set(g.key, on.map((k) => k.name));
   }
   if (el<HTMLInputElement>('hideLogged').checked) {
@@ -792,7 +792,8 @@ function selectKnown(idx: number) {
   // whose reaches its window sits on, so the list shows where it belongs — and
   // clears cleanly when the current filters leave its water out. Best effort in
   // the same way the saved-selection restore is.
-  const at = rows.findIndex((r) => !r.cand && loggedOn(r.group, [k]).length > 0);
+  const at = rows.findIndex((r) => !r.cand
+    && loggedOn(r.group, [k], payload.spacing).length > 0);
   selected = at;
   if (at >= 0) ensureRendered(at);
   highlight(at);
