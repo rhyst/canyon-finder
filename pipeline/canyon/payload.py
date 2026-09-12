@@ -42,7 +42,7 @@ def index_id(meta: dict) -> str:
     known.json, score.json and group-score.json all address this payload by
     position. Rebuild it — new OS data, a different --bbox, a change to how chains
     are traced — and the chains renumber, so those artifacts point at different
-    water: logged canyons drawn on the wrong burn, a wrong "catches N/91", a score
+    water: logged canyons drawn on the wrong burn, a wrong "catches N/M", a score
     fitted to reaches that no longer exist. Nothing about that fails loudly on its
     own, so each artifact records this and its reader checks it.
 

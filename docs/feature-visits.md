@@ -6,7 +6,7 @@ eventually in the promise score.
 
 ## Problem
 
-The app's only ground truth is the 146 canyons logged on Canyon Log
+The app's only ground truth is the 148 canyons logged on Canyon Log
 (`pipeline/canyon/known.py` → `web/public/data/known.json`). People drive out to
 a "good" candidate and find a dud, or find something the tool missed — and there
 is no way to feed that back. This feature adds a second, repo-native source of
@@ -237,7 +237,7 @@ the display** — the gate is data volume, not effort:
   visible in the stage output
 
 Gate: a `--include-visits` flag (off by default) on `analyse` and `rank`.
-Until there are ~5+ visits on top of the 146 Canyon Log entries the flag stays
+Until there are ~5+ visits on top of the 148 Canyon Log entries the flag stays
 off — below that volume one misremembered "not worth it" wobbles the fit more
 than it informs it. When the count is reached: flip the flag, re-run
 `analyse -> export-groups -> rank`, commit the new `score.json` /

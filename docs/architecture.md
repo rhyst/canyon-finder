@@ -22,7 +22,7 @@ web/        interactive map (Vite + MapLibre + a Web Worker doing the search)
 | High-res elevation | [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) via `s3://srsp-open-data` | OGL v3 (some phase-2 LAZ is non-commercial) | 0.5–2 m DTMs as cloud-optimised GeoTIFFs, read over HTTP range requests. Patchy coverage — see below. |
 | Dam structures | [OpenStreetMap](https://www.openstreetmap.org/) | ODbL | Line features tagged `waterway=dam` or `man_made=dam`; crests at least 100 m long flag likely spillways and embankment slopes. |
 | Country outline | Natural Earth 10m map subunits | Public domain | Clips the payload to Scotland. |
-| Known descents | [Canyon Log](https://canyonlog.org/map/) via `wp-json/mapster-wp-maps/map?id=17437` | No stated licence — credit it, ask before redistributing | 146 community-logged Scottish canyons, snapped onto our profiles. Calibrates the thresholds and measures recall. |
+| Known descents | [Canyon Log](https://canyonlog.org/map/) via `wp-json/mapster-wp-maps/map?id=17437` | No stated licence — credit it, ask before redistributing | 148 community-logged Scottish canyons, snapped onto our profiles. Calibrates the thresholds and measures recall. |
 
 The data files are all OGL v3 unless noted in the table above; `./fetch.sh` downloads
 the raw inputs into `data/raw/`.
@@ -172,23 +172,23 @@ own search and counts a descent as caught when a returned reach overlaps it:
 
 | preset | gradient | length | drainage | confinement | sort | logged caught | watercourses |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Calibrated shortlist | ≥12% | 200–600 m | ≥4 km² | — | promise | 55/91 | 1,132 |
-| Wide net — prospecting | ≥8% | 200–2000 m | ≥1 km² | — | promise | 81/91 | 7,422 |
-| Big water | ≥10% | 200–1200 m | ≥15 km² | — | promise | 16/91 | 185 |
-| Tight gorge | ≥12% | 200–800 m | ≥4 km² | ≥20 m | confinement | 24/91 | 350 |
-| Waterfall hunting | ≥20% | 100–300 m | ≥3 km² | — | steepest 100 m | 56/91 | 992 |
-| Steep small burns | ≥15% | 150–800 m | 1–12 km² | — | total drop | 54/91 | 3,662 |
-| Long descents | ≥8% | 1000–5000 m | ≥4 km² | — | length | 41/91 | 682 |
+| Calibrated shortlist | ≥12% | 200–600 m | ≥4 km² | — | promise | 57/93 | 1,132 |
+| Wide net — prospecting | ≥8% | 200–2000 m | ≥1 km² | — | promise | 83/93 | 7,422 |
+| Big water | ≥10% | 200–1200 m | ≥15 km² | — | promise | 16/93 | 185 |
+| Tight gorge | ≥12% | 200–800 m | ≥4 km² | ≥20 m | confinement | 26/93 | 350 |
+| Waterfall hunting | ≥20% | 100–300 m | ≥3 km² | — | steepest 100 m | 57/93 | 992 |
+| Steep small burns | ≥15% | 150–800 m | 1–12 km² | — | total drop | 56/93 | 3,662 |
+| Long descents | ≥8% | 1000–5000 m | ≥4 km² | — | length | 43/93 | 682 |
 
 Each floor is the largest that holds the preset's recall — measured, then kept. Every one of
 them does at least as well as the channel-length bound it replaced, and several do better:
 big water went from 257 watercourses to 185 for the same 16, and small burns from 3,920 to
-3,662 while catching 54 rather than 47.
+3,662 while catching 56 rather than 47.
 
 **The recall column used to be wrong, in the way this README warns against elsewhere.** It
 read 62/81/75/64/30/44/2, computed by testing each logged canyon's stored gradient and length
 against the sliders — which ignores every other filter. Measured properly, big water catches
-16 rather than 75, and long descents 41 rather than 2. Long descents was described here as
+16 rather than 75, and long descents 43 rather than 2. Long descents was described here as
 catching almost nothing because logged canyons are short; in fact a 1 km reach comfortably
 overlaps a 250 m descent, so it catches plenty. It is still the preset for sustained steep
 channel rather than for rediscovering venues, but not for the reason given.
@@ -206,13 +206,13 @@ big water hosts real descents — Bruar drains 72 km² — so the ceiling trades
 
 | ceiling | graded canyons still reachable |
 | --- | --- |
-| 1 km² | 4 of 91 |
-| 2 km² | 9 of 91 |
-| 5 km² | 31 of 91 |
-| 10 km² | 57 of 91 |
-| 20 km² | 64 of 91 |
-| 50 km² | 72 of 91 |
-| none | 76 of 91 |
+| 1 km² | 4 of 93 |
+| 2 km² | 9 of 93 |
+| 5 km² | 31 of 93 |
+| 10 km² | 58 of 93 |
+| 20 km² | 66 of 93 |
+| 50 km² | 74 of 93 |
+| none | 78 of 93 |
 
 The slider's top position means no ceiling rather than 200 km². Only the small-burns preset
 sets one (12 km²), since that is the point of it.
@@ -280,9 +280,9 @@ forgets. `node --experimental-strip-types test/state.test.ts` covers it.
 
 ## Validation
 
-**Recall against Canyon Log.** `python -m canyon.known` pulls the 149 logged Scottish
+**Recall against Canyon Log.** `python -m canyon.known` pulls the 151 logged Scottish
 canyons, drops 3 with no watercourse within 500 m, and snaps the rest onto our profiles
-(90th percentile snap distance 44 m). The search recovers **139 of 146 (95%)** at 8% over
+(90th percentile snap distance 44 m). The search recovers **141 of 148 (95%)** at 8% over
 200–2000 m. All seven misses measure 4–6% — including Monessie Gorge, which is a narrow
 constriction rather than a cascade, so a gradient-only criterion cannot see it.
 
@@ -290,14 +290,14 @@ Their measured gradients set the sensible defaults:
 
 | percentile | gradient | length |
 | --- | --- | --- |
-| p10 | 8.7% | 200 m |
+| p10 | 8.8% | 200 m |
 | p25 | 14% | 200 m |
 | p50 | 21% | 250 m |
-| p75 | 33% | 394 m |
+| p75 | 32% | 400 m |
 | p95 | 48% | 800 m |
 
 The app draws them as dashed lines — **green** for a descent someone rated, **grey** for a
-"0 Stars" report — and the status line shows `catches N/91 logged descents` for the current
+"0 Stars" report — and the status line shows `catches N/93 logged descents` for the current
 filters, so you can see what a threshold is throwing away. It counts graded descents only
 (catching a 0-star is not a virtue) and it counts *coverage*: a logged canyon is caught when
 the search returns a reach overlapping it. Testing each canyon's stored gradient and length
@@ -309,17 +309,17 @@ come from someone else's CMS.
 
 ### What separates a canyon from a steep burn
 
-`python -m canyon.analyse` compares 91 graded descents (Basic/Moderate/Advanced) against
+`python -m canyon.analyse` compares 93 graded descents (Basic/Moderate/Advanced) against
 17 "0 Stars" entries — places people walked in and found not worth it — and against 26,820
 background reaches (steepest non-overlapping 200–600 m window at ≥8% on every chain).
 Medians with interquartile range, and AUC as the discriminating power:
 
 | feature | graded | 0-star | background | AUC v 0-star | AUC v background |
 | --- | --- | --- | --- | --- | --- |
-| gradient | 0.20 | **0.25** | 0.10 | 0.41 | 0.73 |
-| drainage area (km²) | **6.8** | 3.8 | 1.3 | **0.71** | 0.86 |
-| catchment (km upstream) | 4.6 | 2.3 | 0.6 | 0.69 | 0.84 |
-| confinement at 100 m (m) | **11.6** | 8.5 | 4.6 | 0.64 | 0.72 |
+| gradient | 0.20 | **0.25** | 0.10 | 0.40 | 0.73 |
+| drainage area (km²) | **7.0** | 3.8 | 1.3 | **0.71** | 0.86 |
+| catchment (km upstream) | 4.7 | 2.3 | 0.6 | 0.69 | 0.84 |
+| confinement at 100 m (m) | **11.8** | 8.5 | 4.6 | 0.65 | 0.72 |
 | steepest 100 m | 0.30 | 0.31 | 0.16 | 0.48 | 0.77 |
 | steepest 25 m step | 0.46 | 0.48 | 0.23 | 0.56 | 0.84 |
 | fraction of reach ≥15% | 0.60 | 0.75 | 0.25 | 0.34 | 0.71 |
@@ -332,7 +332,7 @@ the graded ones (25% vs 20%, AUC 0.41). Steepness separates canyons from streams
 general (0.73) but among places people actually visited it carries almost no signal. Treat
 it as a sieve, not a ranking.
 
-**Catchment is the best discriminator** — 4.6 km of upstream channel at graded canyons
+**Catchment is the best discriminator** — 4.7 km of upstream channel at graded canyons
 versus 2.3 km at duds and 0.6 km in the background. Enough water is what makes a steep
 reach worth the walk. This comparison also controls for access bias: both groups are
 places someone walked into.
@@ -348,18 +348,18 @@ What filters cost, and how much sifting they save:
 
 | rule | graded kept | 0-star kept | pool | candidates per graded canyon |
 | --- | --- | --- | --- | --- |
-| gradient ≥ 10% | 82% | 94% | 13,578 (51%) | 181 |
-| gradient ≥ 20% | 52% | 65% | 3,872 (14%) | 82 |
-| catchment ≥ 2 km | 77% | 53% | 5,348 (20%) | 76 |
-| catchment ≥ 5 km | 47% | **12%** | 1,543 (6%) | 36 |
-| drainage ≥ 4 km² | 74% | 47% | 4,245 (16%) | 63 |
-| drainage ≥ 10 km² | 33% | **6%** | 1,057 (4%) | 35 |
-| confinement ≥ 20 m | 26% | 6% | 2,641 (10%) | 110 |
+| gradient ≥ 10% | 83% | 94% | 13,578 (51%) | 176 |
+| gradient ≥ 20% | 52% | 65% | 3,872 (14%) | 81 |
+| catchment ≥ 2 km | 77% | 53% | 5,348 (20%) | 74 |
+| catchment ≥ 5 km | 48% | **12%** | 1,540 (6%) | 34 |
+| drainage ≥ 4 km² | 74% | 47% | 4,245 (16%) | 62 |
+| drainage ≥ 10 km² | 33% | **6%** | 1,057 (4%) | 34 |
+| confinement ≥ 20 m | 27% | 6% | 2,642 (10%) | 106 |
 | gradient ≥ 12% & drainage ≥ 4 km² | 49% | 41% | 735 (3%) | 16 |
 | gradient ≥ 15% & drainage ≥ 4 km² | 40% | 29% | 389 (1%) | **11** |
 
 Drainage area is the better sieve as well as the better ranking feature: ≥4 km² keeps 74% of
-graded canyons at 63 candidates each where ≥2 km of channel keeps 77% at 76.
+graded canyons at 62 candidates each where ≥2 km of channel keeps 77% at 74.
 
 A logistic fit on the three useful features (standardised weights: drainage area +1.06,
 gradient +0.87, confinement +0.26) scores **AUC 0.948** against background and 0.700 against
@@ -380,7 +380,7 @@ the point of the tool.
 The reach score answers "is this 300 m steep". Choosing where to drive is a question about
 the *watercourse*, so `canyon.rank` fits a second model at that level, on features exported
 from the app's own search (`web/tools/export-groups.ts`) so model and UI cannot drift.
-Positives are the 84 groups holding a graded descent; background is the other 11,542. The
+Positives are the 86 groups holding a graded descent; background is the other 11,540. The
 17 zero-star groups are held out entirely — too few to train on.
 
 Features are chosen by forward selection on **out-of-fold** AUC, which stops early:
@@ -388,11 +388,11 @@ Features are chosen by forward selection on **out-of-fold** AUC, which stops ear
 | step | added | out-of-fold AUC |
 | --- | --- | --- |
 | 1 | max drainage area, capped at 50 km² | 0.866 |
-| 2 | peak reach gradient | 0.942 |
-| 3 | max confinement anywhere on it | 0.949 |
-| — | next best (overall gradient) gains -0.000, stop | — |
+| 2 | peak reach gradient | 0.940 |
+| 3 | max confinement anywhere on it | 0.947 |
+| — | next best (steep drop) gains 0.001, stop | — |
 
-Out-of-fold 0.949 against in-sample 0.950 says it is not overfitting. Against zero-star it
+Out-of-fold 0.947 against in-sample 0.950 says it is not overfitting. Against zero-star it
 manages 0.661 — the same ceiling the reach model hits, for the same reason.
 
 **The scale is anchored on the logged canyons, not on probability.** The fit is a
@@ -400,9 +400,9 @@ probability, but at a 0.7% base rate a calibrated probability reads 1% for a per
 canyon, which is unusable — Falls of Barvick, a graded V3 A3 II ★★, came out at 1% while
 sitting 621st of 11,677. Promise is therefore reported as position within the logged
 distribution: **50 is the median logged descent**, 0 is unremarkable water. Ranking is
-identical, being a monotone rescaling. Logged canyons then read median 51, with 63 of 84
-at 25 or above and background median 0; Bruar 84 (top 0.4%), Alva 81, Acharn 77, Barvick 37
-(top 5.3%). Those checks are asserted in `web/test/search.test.ts`.
+identical, being a monotone rescaling. Logged canyons then read median 51, with 64 of 86
+at 25 or above and background median 0; Bruar 85 (top 0.4%), Alva 81, Acharn 78, Barvick 38
+(top 5.4%). Those checks are asserted in `web/test/search.test.ts`.
 
 ### Drainage area, and a hypothesis that did not survive it
 
@@ -425,11 +425,11 @@ diagnosis above was wrong, and only a proper measurement could say so.
 
 What it does buy is a better feature everywhere else. Both models now fit on it, and both
 improve — the reach score to **AUC 0.948** against background and **0.700** against 0-star
-(from 0.937 and 0.683), and the watercourse ranking to **out-of-fold 0.949** from 0.943, with
+(from 0.937 and 0.683), and the watercourse ranking to **out-of-fold 0.947** from 0.943, with
 39 graded canyons in the top 250 rather than 38. Forward selection picks drainage area first,
 ahead of what used to be the strongest feature.
 
-**Where the water term saturates matters more than the feature swap.** Averaged over 11,542
+**Where the water term saturates matters more than the feature swap.** Averaged over 11,540
 watercourses, out-of-fold AUC cannot tell a 50 km² cap from a 200 km² one — both read 0.866 —
 but the looser cap fills the top of the prospect list with major rivers carrying no gradient:
 the Clyde at 92 on a 14% peak, the River Doon at 9%. Uncapped drainage discriminates *better*
@@ -508,7 +508,7 @@ shortlist needs the secondary filters (catchment, length) to be useful.
 - Gradient is blind to gorge *narrowness*: Monessie Gorge is a well-known slot that reads
   as 4% and never appears. Confinement would need a cross-valley relief metric, which a
   50 m DEM cannot supply.
-- The score is fitted on 91 graded canyons. It reproduces what has been logged, which is
+- The score is fitted on 93 graded canyons. It reproduces what has been logged, which is
   biased towards accessible and well-known water — it is a prioritiser, not a verdict.
 - A long river yields several adjacent qualifying reaches, so Bruar Water can appear three
   times in one shortlist. They are genuinely distinct sections, not duplicates.

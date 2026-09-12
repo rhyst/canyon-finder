@@ -66,7 +66,7 @@ def apply(w: np.ndarray, X: np.ndarray) -> np.ndarray:
 
 
 def cv_auc(X: np.ndarray, y: np.ndarray, seed: int = 0) -> float:
-    """Out-of-fold AUC. With 84 positives, in-sample AUC flatters badly."""
+    """Out-of-fold AUC. With fewer than 100 positives, in-sample AUC flatters badly."""
     rng = np.random.default_rng(seed)
     order = rng.permutation(len(y))
     folds = np.array_split(order, FOLDS)
@@ -105,7 +105,7 @@ def main() -> None:
         single[name] = cv_auc(col[:, None], y)
         print(f"  {name:18} {single[name]:.3f}")
 
-    # Forward selection on out-of-fold AUC: with 84 positives, more features stop
+    # Forward selection on out-of-fold AUC: with few positives, more features stop
     # helping quickly, and adding them silently overfits.
     chosen: list[tuple[str, dict]] = []
     best_auc = 0.5
@@ -119,7 +119,7 @@ def main() -> None:
             trial = chosen + [(name, spec)]
             X = np.column_stack([column(rows, n, s)[train] for n, s in trial])
             options.append((cv_auc(X, y), name, spec))
-        # AUC to three places, then the tightest cap. Averaged over 11,542
+        # AUC to three places, then the tightest cap. Averaged over all background
         # groups, AUC cannot tell a cap of 50 km² from 200, but the looser one
         # fills the top of the list with major rivers carrying no gradient — so
         # under a tie, take the model that claims less.

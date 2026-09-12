@@ -19,7 +19,7 @@ Everything in this project is pure slop! Use for entertainment purposes only!
 - Drag the **gradient, length and drainage** sliders; the list and map re-search all of
   Scotland in a fraction of a second, entirely in your browser.
 - **Presets** set everything at once. *Calibrated shortlist* is the default and finds
-  55 of the 91 graded descents logged on Canyon Log; *Wide net* finds 81.
+  57 of the 93 graded descents logged on Canyon Log; *Wide net* finds 83.
 - Reaches are coloured by steepness. The list groups them by watercourse, best first.
 - **Dashed green lines** are canyons people have logged and rated; **grey** are ones
   they visited and reported as not worth it.
@@ -35,7 +35,7 @@ Everything in this project is pure slop! Use for entertainment purposes only!
 | Watercourses | [OS Open Rivers](https://os.uk/products/os-open-rivers) | 63,210 km of named and unnamed channels, with flow direction. © Ordnance Survey, OGL v3. |
 | Elevation | [OS Terrain 50](https://os.uk/products/os-terrain-50) + [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) | 50 m national baseline, refined to ~1 m where LiDAR exists. OGL v3. |
 | Dam structures | [OpenStreetMap](https://www.openstreetmap.org/) | Large mapped dams flag likely spillways and embankment slopes. © OpenStreetMap contributors, ODbL. |
-| Known descents | [Canyon Log](https://canyonlog.org/map/) | 146 community-logged Scottish canyons, reproduced with permission. Calibrates the filters and the scoring. |
+| Known descents | [Canyon Log](https://canyonlog.org/map/) | 148 community-logged Scottish canyons, reproduced with permission. Calibrates the filters and the scoring. |
 | Visit reports | Community pull requests ([how to add yours](docs/contributing-visits.md)) | Static reports in `data/visits/` — stars (0–4), notes, photos, corrections — merged into `known.json` by the pipeline. Feed the scoring once a handful exist. |
 
 ## Developing locally
