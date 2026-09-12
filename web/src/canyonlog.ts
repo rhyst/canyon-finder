@@ -15,12 +15,13 @@ export const VISIT_SOURCE = 'visit';
 /** A 0 on Canyon Log, or every visit report at 0, means not worth the walk. */
 export function isDud(k: KnownCanyon): boolean {
   if (k.category === ZERO_STAR) return true;
-  return (k.visits?.length ?? 0) > 0 && k.visits!.every((v) => v.stars === 0);
+  return k.source === VISIT_SOURCE && (k.visits?.length ?? 0) > 0
+    && k.visits!.every((v) => v.stars === 0);
 }
 
 /** At least one visit report says worth it — isDud's positive counterpart. */
 export function isWorthwhile(k: KnownCanyon): boolean {
-  return (k.visits ?? []).some((v) => v.stars >= 1);
+  return isGraded(k) || (k.visits ?? []).some((v) => v.stars >= 1);
 }
 
 export function isGraded(k: KnownCanyon): boolean {

@@ -121,5 +121,5 @@ export interface KnownCanyon {
   /** Community visit reports: attached to a logged entry, or its own entry. */
   visits?: VisitReport[];
   /** Set on entries created by the visit stage rather than the Canyon Log stage. */
-  source?: string;
+  source?: 'canyon-log' | 'visit';
 }

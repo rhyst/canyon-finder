@@ -20,7 +20,7 @@ import {
   buildGroups, buildRows, candId, findRow, groupOf, groupScore, loggedOn, nearestLogged,
   type Group, type GroupModel, type Row,
 } from './grouping';
-import { covered, isDud, isGraded, reportedStats, visitReportsHtml, VISIT_SOURCE } from './canyonlog';
+import { covered, isDud, isWorthwhile, reportedStats, visitReportsHtml, VISIT_SOURCE } from './canyonlog';
 import { esc, fmtArea, reachLine, safeUrl, watercourseLine } from './format';
 import { loadState, presetFor, saveState, type SavedSelection } from './state';
 
@@ -119,7 +119,7 @@ mobileLayout.addEventListener('change', (e) => {
 
 let payload: Payload;
 let known: KnownCanyon[] = []; // community-logged descents, for calibration
-let graded: KnownCanyon[] = []; // the graded ones: catching a 0-star is no virtue
+let worthwhile: KnownCanyon[] = []; // graded descents plus positive community visits
 const knownByChain = new Map<number, KnownCanyon[]>(); // real descents override a dam proximity flag
 let lidarGeometry: unknown = null; // coverage outline, fetched with the payload
 let scoreModel: ScoreModel | null = null;
@@ -176,6 +176,7 @@ map.on('load', () => {
   map.addSource('reaches', { type: 'geojson', data: empty as never });
   map.addSource('reach-points', { type: 'geojson', data: empty as never });
   map.addSource('picked', { type: 'geojson', data: empty as never });
+  map.addSource('picked-known', { type: 'geojson', data: empty as never });
   map.addSource('known', { type: 'geojson', data: knownGeoJSON() as never });
   map.addSource('known-points', { type: 'geojson', data: knownPointGeoJSON() as never });
 
@@ -277,6 +278,32 @@ map.on('load', () => {
       'circle-color': ['case', ['get', 'dud'], '#8b97a3', '#5ec98a'],
       'circle-stroke-color': '#12181d',
       'circle-stroke-width': 1.5,
+      'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1, 11.5, 0],
+      'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1, 11.5, 0],
+    },
+  });
+  // A selected canyon needs its own topmost overlay: its normal line becomes a
+  // dot at national zooms, and the selection must make the same handover.
+  map.addLayer({
+    id: 'picked-known-line',
+    type: 'line',
+    source: 'picked-known',
+    layout: ROUND,
+    paint: {
+      'line-color': '#4cc4ff',
+      'line-width': ['interpolate', ['linear'], ['zoom'], 11, 5, 15, 8],
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 1],
+    },
+  });
+  map.addLayer({
+    id: 'picked-known-dot',
+    type: 'circle',
+    source: 'picked-known',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 11, 9],
+      'circle-color': '#4cc4ff',
+      'circle-stroke-color': '#12181d',
+      'circle-stroke-width': 2,
       'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1, 11.5, 0],
       'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 10, 1, 11.5, 0],
     },
@@ -383,7 +410,7 @@ async function boot() {
     lon: k.coords[0][0],
     lat: k.coords[0][1],
   }));
-  graded = known.filter(isGraded);
+  worthwhile = known.filter(isWorthwhile);
   knownByChain.clear();
   for (const k of known.filter((entry) => !isDud(entry))) {
     knownByChain.set(k.chain, [...(knownByChain.get(k.chain) ?? []), k]);
@@ -511,14 +538,14 @@ function renderResults(keepPlace = false) {
 
   // Measured against everything the search found, not the displayed subset, so
   // it reports what the filters reach rather than what the view toggles show.
-  const hit = covered(graded, results).length;
+  const hit = covered(worthwhile, results).length;
   const took = stats.ms >= 1000 ? `${(stats.ms / 1000).toFixed(1)} s` : `${stats.ms.toFixed(0)} ms`;
   el('status').innerHTML =
     `${groups.length.toLocaleString()} watercourses · ` +
     `${view.length.toLocaleString()} reaches · ${took}` +
     (damsHidden ? ` · ${damsHidden.toLocaleString()} large-dam reaches hidden` : '') +
     (stats.truncated ? ' · <span class="trunc">search truncated</span>' : '') +
-    (graded.length ? ` · <span class="known-hit">catches ${hit}/${graded.length} ` +
+    (worthwhile.length ? ` · <span class="known-hit">catches ${hit}/${worthwhile.length} ` +
       `logged descents</span>` : '') +
     (stale.length ? ` · <span class="trunc">ignoring ${esc(stale.join(', '))}: ` +
       `built against a different payload, re-run the pipeline</span>` : '');
@@ -742,6 +769,7 @@ function selectKnown(idx: number) {
     : esc(k.category) || 'ungraded';
   showDetail({
     coords: [k.coords],
+    known: true,
     title: `${esc(k.name)} <span class="tag${dud ? ' dud' : ''}">` +
       `${dud ? '0 stars' : visitEntry ? 'visit' : 'logged'}</span>`,
     stats: `${grade}${cat} · ` +
@@ -772,6 +800,7 @@ function selectKnown(idx: number) {
 
 interface Detail {
   coords: [number, number][][];
+  known?: boolean; // selected known canyon gets the blue line/dot overlay
   title: string;
   context?: string; // the watercourse the reach belongs to
   stats: string;
@@ -783,13 +812,33 @@ interface Detail {
 }
 
 function showDetail(info: Detail) {
+  const flat = info.coords.flat();
   (map.getSource('picked') as GeoJSONSource | undefined)?.setData({
     type: 'Feature',
     geometry: { type: 'MultiLineString', coordinates: info.coords },
     properties: {},
   } as never);
 
-  const flat = info.coords.flat();
+  const selectedKnown = info.known ? {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: { type: 'MultiLineString', coordinates: info.coords },
+        properties: {},
+      },
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: flat[Math.floor(flat.length / 2)],
+        },
+        properties: {},
+      },
+    ],
+  } : empty;
+  (map.getSource('picked-known') as GeoJSONSource | undefined)?.setData(selectedKnown as never);
+
   const lons = flat.map((p) => p[0]);
   const lats = flat.map((p) => p[1]);
 

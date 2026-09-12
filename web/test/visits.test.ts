@@ -44,18 +44,27 @@ const visit = (over: Partial<VisitReport>): VisitReport =>
 check('the vocabulary extends Canyon Log vocabulary without changing it', () => {
   assert.ok(isDud(entry({ category: ZERO_STAR })), '0 Stars stays a dud');
   assert.ok(!isDud(entry({ category: 'Moderate' })), 'graded is not a dud');
-  assert.ok(isDud(entry({ visits: [visit({ stars: 0 }), visit({ stars: 0 })] })),
+  assert.ok(isDud(entry({ source: VISIT_SOURCE,
+    visits: [visit({ stars: 0 }), visit({ stars: 0 })] })),
     'all-zero visits are a dud');
-  assert.ok(!isDud(entry({ visits: [visit({ stars: 0 }), visit({ stars: 1 })] })),
+  assert.ok(!isDud(entry({ source: VISIT_SOURCE,
+    visits: [visit({ stars: 0 }), visit({ stars: 1 })] })),
     'one worthwhile visit rescues the entry');
-  assert.ok(!isDud(entry({ visits: [visit({ stars: 2 })] })), 'a 2 is not a dud');
-  assert.ok(!isWorthwhile(entry({ visits: [visit({ stars: 0 })] })),
+  assert.ok(!isDud(entry({ source: VISIT_SOURCE, visits: [visit({ stars: 2 })] })),
+    'a 2 is not a dud');
+  assert.ok(!isDud(entry({ category: 'Advanced', visits: [visit({ stars: 0 })] })),
+    'a visit must not overturn a graded Canyon Log entry');
+  assert.ok(!isWorthwhile(entry({ source: VISIT_SOURCE, visits: [visit({ stars: 0 })] })),
     'zeros are not worthwhile');
-  assert.ok(isWorthwhile(entry({ visits: [visit({ stars: 1 })] })), 'a 1 is worthwhile');
+  assert.ok(isWorthwhile(entry({ source: VISIT_SOURCE, visits: [visit({ stars: 1 })] })),
+    'a 1 is worthwhile');
+  assert.ok(isWorthwhile(entry({ category: 'Potential Canyon', visits: [visit({ stars: 1 })] })),
+    'an attached positive report is worthwhile');
   assert.ok(!isWorthwhile(entry({})), 'no visits is not worthwhile');
   assert.ok(!isGraded(entry({ source: VISIT_SOURCE })),
-    'a visit entry is not a graded descent — the counter must ignore it');
+    'a visit entry is not a Canyon Log grade');
   assert.ok(isGraded(entry({ category: 'Basic' })), 'graded stays graded');
+  assert.ok(isWorthwhile(entry({ category: 'Basic' })), 'graded entries stay worthwhile');
 });
 
 check('the star tag speaks Canyon Log vocabulary', () => {

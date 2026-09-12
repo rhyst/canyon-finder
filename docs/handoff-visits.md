@@ -134,10 +134,10 @@ Done as planned, with recorded additions:
 - Report objects also carry `name` when the YAML supplies one (additive vs the
   schema above — useful for the M2 detail panel; M2: display it).
 
-Selftest: 33 fixture checks (validation + merge, incl. idempotency and the
-stale-data rebuild). E2E verified: attach to a logged reach, new-entry path,
-skipped snaps leave no images, removing a visit restores `known.json`
-byte-for-byte.
+Selftest: 38 fixture checks (validation + merge, incl. idempotency, finite
+numbers, canonical slugs, and the stale-data/image rebuild). E2E verified:
+attach to a logged reach, new-entry path, skipped snaps leave no images,
+removing a visit restores `known.json` byte-for-byte.
 
 1. `pipeline/canyon/visits.py`:
    - discover `data/visits/*/visit.yaml` (skip leading-underscore dirs; add

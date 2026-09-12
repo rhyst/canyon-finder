@@ -22,6 +22,7 @@ import argparse
 import base64
 import datetime
 import json
+import math
 import re
 import shutil
 from dataclasses import dataclass
@@ -43,10 +44,12 @@ OPTIONAL = ("name", "description", "grade", "pitches", "highest_pitch_m",
             "corrections", "images", "links")
 CORRECTION_KEYS = ("drop_m", "length_m")  # display-only overrides, values only
 ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+SLUG = re.compile(r"\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 def _is_num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    return ((isinstance(v, int) and not isinstance(v, bool))
+            or (isinstance(v, float) and math.isfinite(v)))
 
 
 def _is_int(v) -> bool:
@@ -108,6 +111,14 @@ def validate_visit(vdir: Path, boundary, to_bng) -> tuple[Visit | None, list[str
     """
     errs: list[str] = []
     slug = vdir.name
+    if not SLUG.fullmatch(slug):
+        errs.append("directory name must be YYYY-MM-DD-kebab-slug "
+                    f"(got {slug!r})")
+    else:
+        try:
+            datetime.date.fromisoformat(slug[:10])
+        except ValueError:
+            errs.append(f"directory name starts with an invalid date (got {slug!r})")
     ypath = vdir / "visit.yaml"
     if not ypath.is_file():
         return None, [f"{slug}: missing visit.yaml"]
@@ -312,6 +323,27 @@ def merge(canyons: list[dict], entries: list[tuple[dict, Visit]]) -> list[dict]:
     return out
 
 
+def publish_images(pub: Path, entries: list[tuple[dict, Visit]]) -> int:
+    """Make the published image tree exactly match successfully snapped visits."""
+    if pub.is_symlink():
+        raise RuntimeError(f"refusing to publish images through symlink: {pub}")
+    if pub.is_dir():
+        for child in pub.iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
+    copied = 0
+    for _, v in entries:
+        for im in v.report.get("images", []):
+            dst = pub / v.slug
+            dst.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(v.dir / im["file"], dst / im["file"])
+            copied += 1
+    return copied
+
+
 def main() -> None:
     root = Path(__file__).resolve().parents[2]
     p = argparse.ArgumentParser(description=__doc__)
@@ -379,17 +411,7 @@ def main() -> None:
           f"-> {a.out / 'known.json'}")
 
     pub = a.out / "visits"
-    if pub.is_dir():
-        for d in pub.iterdir():  # a visit removed in the same PR leaves no images
-            if d.is_dir() and d.name not in {v.slug for v in visits}:
-                shutil.rmtree(d)
-    copied = 0
-    for _, v in entries:  # snapped visits only — a skipped one leaves no images
-        for im in v.report.get("images", []):
-            dst = pub / v.slug
-            dst.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(v.dir / im["file"], dst / im["file"])
-            copied += 1
+    copied = publish_images(pub, entries)
     if copied:
         print(f"copied {copied} images -> {pub}")
     for s, v in entries:
@@ -505,6 +527,11 @@ links:
     ok(any("unknown field" in e and "exposure" in e for e in errs),
        f"unknown field not caught: {errs}")
 
+    # directory names become public URL path segments and must be canonical
+    _, errs = run(good, slug="bad slug",
+                  images={"top.png": PNG_1PX, "bottom.png": PNG_1PX})
+    ok(any("directory name" in e for e in errs), f"bad slug not caught: {errs}")
+
     # images: missing file, bad type, oversized, too many
     _, errs = run(good.replace("file: bottom.png", "file: missing.png"),
                   images={"top.png": PNG_1PX})
@@ -532,6 +559,13 @@ links:
             (good.replace("drop_m: 40", "drop_m: -4"), "negative correction")):
         _, errs = run(text, images={"top.png": PNG_1PX, "bottom.png": PNG_1PX})
         ok(any("corrections" in e for e in errs), f"{what} not caught: {errs}")
+
+    # YAML has spellings for non-finite floats; none may reach JSON output.
+    for text, what in (
+            (good.replace("highest_pitch_m: 25", "highest_pitch_m: .nan"), "NaN pitch"),
+            (good.replace("drop_m: 40", "drop_m: .inf"), "infinite correction")):
+        _, errs = run(text, images={"top.png": PNG_1PX, "bottom.png": PNG_1PX})
+        ok(errs, f"{what} not caught: {errs}")
 
     # ---- merge ----------------------------------------------------------
     base = [{
@@ -587,6 +621,23 @@ links:
     merged = merge(dirty, [(dict(snapped), vis("2026-01-01-a"))])
     ok(all("stale" not in json.dumps(m) for m in merged),
        f"stale visit data survived: {merged}")
+
+    # Publishing is an exact rebuild: removed files and unsnapped visits vanish.
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        pub = root / "public"
+        (pub / "old-visit").mkdir(parents=True)
+        (pub / "old-visit" / "stale.png").write_bytes(PNG_1PX)
+        src = root / "2026-01-01-current"
+        src.mkdir()
+        (src / "current.png").write_bytes(PNG_1PX)
+        current = Visit(src.name, {"author": "T", "date": "2026-01-01", "stars": 2,
+                                   "images": [{"file": "current.png"}]},
+                        "", -5.41, 56.87, src)
+        copied = publish_images(pub, [(dict(snapped), current)])
+        ok(copied == 1 and (pub / src.name / "current.png").is_file(),
+           "current image was not published")
+        ok(not (pub / "old-visit").exists(), "stale published images survived")
 
     print(f"visits selftest: {checks} checks passed")
 
