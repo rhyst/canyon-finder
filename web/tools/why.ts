@@ -53,7 +53,7 @@ for (const { c, i } of chains) {
 const loose: Query = {
   sort: 'score', minGradient: 0.05, maxGradient: 1, minLength: 100, maxLength: 2000,
   minDrain: 0, maxDrain: Infinity, minCatchment: 0, maxCatchment: Infinity,
-  minConfine: 0, minAltitude: 0,
+  minConfine: 0, minAltitude: 0, minDrop: 0,
 };
 const all = search(loose);
 const mine = all.candidates.filter((c) => c.name === name);
@@ -94,6 +94,7 @@ for (const [key, p] of Object.entries(PRESETS)) {
     maxCatchment: Infinity,
     minConfine: Number(p.minConf),
     minAltitude: Number(p.minAlt),
+    minDrop: Number(p.minDrop ?? 0),
   };
   const groups = buildGroups(search(q).candidates, q.sort, meta.spacing, groupModel);
   const at = groups.findIndex((g) => g.name === name);
@@ -105,6 +106,7 @@ for (const [key, p] of Object.entries(PRESETS)) {
       ['length', { minLength: 25, maxLength: 5000 }],
       ['confinement', { minConfine: 0 }],
       ['altitude', { minAltitude: 0 }],
+      ['drop', { minDrop: 0 }],
     ];
     const culprits = relax
       .filter(([, patch]) =>

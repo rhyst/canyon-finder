@@ -58,6 +58,8 @@ export interface Query {
   maxCatchment: number;
   minConfine: number;
   minAltitude: number;
+  /** Total drop floor for a reach, in metres. 0 for no limit. */
+  minDrop: number;
 }
 
 export interface Candidate {

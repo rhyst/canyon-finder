@@ -51,6 +51,12 @@
         </label>
 
         <label class="range">
+          <span>Min drop <em>(vertical fall of the reach)</em></span>
+          <output id="dropOut">0 m</output>
+          <input id="minDrop" type="range" min="0" max="1000" step="25" value="0" />
+        </label>
+
+        <label class="range">
           <span>Drainage area <em>(how much land feeds it)</em></span>
           <output id="drainOut">4 km² +</output>
           <div class="dual">

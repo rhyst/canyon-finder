@@ -192,6 +192,7 @@ export function search(q: Query): {
   const sp = meta.spacing;
   const minK = Math.max(1, Math.round(q.minLength / sp));
   const maxK = Math.max(minK, Math.round(q.maxLength / sp));
+  const minDrop = q.minDrop ?? 0; // 0 for no limit
   const sub = Math.max(1, Math.round(100 / sp)); // 100m window for the steepness flag
   const out: Candidate[] = [];
   let scanned = 0;
@@ -218,6 +219,11 @@ export function search(q: Query): {
 
       const length = (j - i) * sp;
       const drop = (z[o + i] - z[o + j]) / 10;
+      // A reach under the drop floor is discarded, but its span stays claimed:
+      // it was the steepest window here, so the recursion only looks to either
+      // side for the next reach.
+      ranges.push([from, i], [j, to]);
+      if (drop < minDrop) continue;
       let steepest = 0;
       for (let t = i; t + sub <= j; t++) {
         const g = (z[o + t] - z[o + t + sub]) / (sub * sp * 10);
@@ -255,7 +261,6 @@ export function search(q: Query): {
         // discards most windows it looks at.
         coords: [],
       });
-      ranges.push([from, i], [j, to]);
     }
     if (out.length >= MAX_REACHES) {
       return { candidates: out, scanned, truncated: true };

@@ -110,7 +110,7 @@ check('a save that throws (quota, private mode) is swallowed', () => {
 
 const calibrated = { minGrad: '12', maxGrad: '100', minLen: '200', maxLen: '600',
                      minDrain: '4', maxDrain: '200', minConf: '0', minAlt: '0',
-                     sort: 'promise' };
+                     minDrop: '50', sort: 'promise' };
 
 check('preset matching recognises a measured slider set', () => {
   assert.equal(presetFor(calibrated), 'calibrated');

@@ -32,7 +32,7 @@ const duds = logged.filter(isDud);
 const BASE: Query = {
   sort: 'promise', minGradient: 0.08, maxGradient: 1, minLength: 200,
   maxLength: 2000, minDrain: 0, maxDrain: Infinity, minCatchment: 0,
-  maxCatchment: Infinity, minConfine: 0, minAltitude: 0,
+  maxCatchment: Infinity, minConfine: 0, minAltitude: 0, minDrop: 0,
 };
 
 function measure(q: Query) {
@@ -70,6 +70,7 @@ const asQuery = (p: Record<string, number | string>, over: Partial<Query>): Quer
   maxDrain: Number(p.maxDrain) >= 200 ? Infinity : Number(p.maxDrain),
   minConfine: Number(p.minConf),
   minAltitude: Number(p.minAlt),
+  minDrop: Number(p.minDrop ?? 0),
   ...over,
 });
 

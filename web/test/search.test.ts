@@ -35,6 +35,7 @@ const query = (q: Partial<Query> = {}): Query => ({
   maxCatchment: Infinity,
   minConfine: 0,
   minAltitude: 0,
+  minDrop: 0,
   ...q,
 });
 
@@ -168,6 +169,21 @@ check('drainage filters work at both ends', () => {
   const byChannel = search(query({ minCatchment: 20 }));
   assert.ok(byChannel.candidates.length > 0, 'the channel bound stopped working');
   for (const c of byChannel.candidates) assert.ok(c.catchment >= 20, `${c.catchment}`);
+});
+
+check('the drop floor is respected and monotone', () => {
+  for (const floor of [50, 150, 300]) {
+    for (const c of search(query({ minDrop: floor })).candidates) {
+      assert.ok(c.drop >= floor - 1e-9,
+        `drop ${c.drop.toFixed(0)} m under the ${floor} m floor`);
+    }
+  }
+  const counts = [0, 50, 150, 300].map((d) => search(query({ minDrop: d })).candidates.length);
+  for (let i = 1; i < counts.length; i++) {
+    assert.ok(counts[i] <= counts[i - 1], `not monotone: ${counts}`);
+  }
+  assert.ok(counts[0] > 0 && counts[1] < counts[0], `the floor did nothing: ${counts}`);
+  console.log(`      reaches at 0/50/150/300 m drop: ${counts.join(' / ')}`);
 });
 
 const knownDoc = JSON.parse(await readFile('public/data/known.json', 'utf8'));

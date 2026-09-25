@@ -466,12 +466,14 @@ function readQuery(): Query {
     : `${num('minDrain')}–${maxDrain} km²`;
   el('confOut').textContent = `${num('minConf')} m`;
   el('altOut').textContent = `${num('minAlt')} m`;
+  el('dropOut').textContent = `${num('minDrop')} m`;
 
   return {
     minGradient: minGrad,
     maxGradient: maxGrad,
     minLength: minLen,
     maxLength: maxLen,
+    minDrop: num('minDrop'),
     minDrain: num('minDrain'),
     maxDrain: maxDrain >= DRAIN_NO_LIMIT ? Infinity : maxDrain,
     // The channel-length bound stays in the engine for tools/thresholds.ts to
@@ -932,7 +934,7 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
 
 /** The filter panel, by element id. Checkboxes save as 'true'/'false'. */
 const FILTER_IDS = [
-  'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrain', 'maxDrain',
+  'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrop', 'minDrain', 'maxDrain',
   'minConf', 'minAlt', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'showKnown', 'showLidar', 'basemap',
 ];
 

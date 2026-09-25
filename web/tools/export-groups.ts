@@ -19,7 +19,7 @@ const out = process.argv[2] ?? '../data/work/groups.json';
 const QUERY: Query = {
   sort: 'score', minGradient: 0.08, maxGradient: 1, minLength: 200, maxLength: 2000,
   minDrain: 0, maxDrain: Infinity, minCatchment: 0, maxCatchment: Infinity,
-  minConfine: 0, minAltitude: 0,
+  minConfine: 0, minAltitude: 0, minDrop: 0,
 };
 
 const meta: Payload = JSON.parse(await readFile('public/data/profiles.json', 'utf8'));
