@@ -23,7 +23,7 @@ from rasterio.features import shapes as raster_shapes
 from shapely.geometry import MultiPolygon, mapping, shape
 from shapely.ops import transform, unary_union
 
-from .boundary import scotland_polygon
+from .boundary import polygon, scotland_polygon
 
 CELL = 250.0
 BBOX = (0.0, 500_000.0, 500_000.0, 1_250_000.0)  # all Scotland, BNG
@@ -64,13 +64,19 @@ def coverage_grid(cache: Path, refresh: bool = False) -> np.ndarray:
 
 def coverage_polygon(cache: Path, raw: Path, refresh: bool = False,
                      simplify: float = 150):
-    """Portal coverage as a BNG Polygon/MultiPolygon, clipped to Scotland."""
+    """LiDAR coverage as a BNG Polygon/MultiPolygon.
+
+    Scotland is the portal's mask. England and Wales publish national
+    composites, so they are drawn whole.
+    """
     grid = coverage_grid(cache, refresh)
     affine = (CELL, 0.0, BBOX[0], 0.0, -CELL, BBOX[3])
     geoms = [shape(g) for g, value in raster_shapes(
         grid.astype(np.uint8), transform=affine) if int(value) == 1]
     merged = unary_union(geoms).simplify(simplify)
-    return merged.intersection(scotland_polygon(raw))
+    # The country polygons are buffered 2 km out; pull the coast back in.
+    south = polygon(raw, ("England", "Wales")).buffer(-2000)
+    return unary_union([merged.intersection(scotland_polygon(raw)), south])
 
 
 def rounded(value):
@@ -96,7 +102,7 @@ def main() -> None:
         a.work / "lidar_coverage.png", a.raw, a.refresh, a.simplify)
     parts = list(covered.geoms) if hasattr(covered, "geoms") else [covered]
     covered = MultiPolygon(parts)
-    print(f"coverage in Scotland: {covered.area / 1e6:,.0f} km2, "
+    print(f"coverage: {covered.area / 1e6:,.0f} km2, "
           f"{len(parts)} parts")
 
     to_wgs = Transformer.from_crs(27700, 4326, always_xy=True)

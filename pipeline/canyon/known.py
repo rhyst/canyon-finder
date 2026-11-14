@@ -1,7 +1,7 @@
-"""Known Scottish descents from Canyon Log, snapped onto our watercourse profiles.
+"""Known descents from Canyon Log, snapped onto our watercourse profiles.
 
 Canyon Log (https://canyonlog.org/map/) publishes community-logged canyons as
-point markers. This pulls the Scottish ones, matches each to the watercourse it
+point markers. This pulls the ones in the covered region, matches each to the watercourse it
 sits on, and measures the reach around it with the same profile data the search
 uses — so a logged canyon can be drawn as a line and compared with candidates
 on equal terms.
@@ -23,7 +23,7 @@ import numpy as np
 from pyproj import Transformer
 from shapely.geometry import Point
 
-from .boundary import scotland
+from .boundary import region
 from . import payload
 from .payload import chain_lonlat
 
@@ -58,12 +58,16 @@ def parse(loc: dict) -> dict | None:
     body = loc.get("data", {}).get("popup", {}).get("body_text", "") or ""
     grade = GRADE_RE.search(body)
     text = TAG_RE.sub(" ", body)
+    category = "; ".join(c["name"] for c in loc.get("categories", []))
     return {
         "name": loc.get("title", "").strip(),
         "lon": float(lon),
         "lat": float(lat),
         "grade": (grade.group(1).strip() if grade else ""),
-        "category": "; ".join(c["name"] for c in loc.get("categories", [])),
+        # Canyon Log's quality rating, 0-4; None where nobody has graded it.
+        "stars": (0 if category == "0 Stars"
+                  else grade.group(1).count("★") if grade else None),
+        "category": category,
         "url": loc.get("permalink", ""),
         "note": " ".join(text.split())[:240],
     }
@@ -171,14 +175,14 @@ def main() -> None:
                              fetch(a.work / "canyonlog.json", a.refresh)) if r]
     print(f"Canyon Log: {len(locations)} logged canyons worldwide")
 
-    scot = scotland(a.raw, root / "data" / "boundary.scotland.geojson")
+    covered = region(a.raw, root / "data" / "boundary.geojson")
     to_bng = Transformer.from_crs(4326, 27700, always_xy=True)
     inside = []
     for r in locations:
         x, y = to_bng.transform(r["lon"], r["lat"])
-        if scot.contains(Point(x, y)):
+        if covered.contains(Point(x, y)):
             inside.append(r)
-    print(f"  {len(inside)} in Scotland")
+    print(f"  {len(inside)} in the covered region")
 
     pay = payload.load(a.out)
     grid = snap_grid(pay)

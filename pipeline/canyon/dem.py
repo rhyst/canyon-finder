@@ -38,11 +38,14 @@ class Terrain50:
 
     @classmethod
     def load(cls, root: Path, squares: set[str], cache: Path | None = None) -> "Terrain50":
+        want = " ".join(sorted(squares))
         if cache and cache.exists():
             npz = np.load(cache)
-            keys = npz["keys"]
-            data = npz["data"]
-            return cls({(int(k[0]), int(k[1])): data[i] for i, k in enumerate(keys)})
+            # A cache built for a different set of squares is stale.
+            if "squares" in npz and str(npz["squares"]) == want:
+                keys = npz["keys"]
+                data = npz["data"]
+                return cls({(int(k[0]), int(k[1])): data[i] for i, k in enumerate(keys)})
 
         tiles: dict[tuple[int, int], np.ndarray] = {}
         for sq in sorted(squares):
@@ -64,7 +67,7 @@ class Terrain50:
             keys = np.array(list(tiles.keys()), dtype=np.int32)
             data = np.stack([tiles[tuple(k)] for k in keys])
             cache.parent.mkdir(parents=True, exist_ok=True)
-            np.savez_compressed(cache, keys=keys, data=data)
+            np.savez_compressed(cache, keys=keys, data=data, squares=want)
         return result
 
     def sample(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:

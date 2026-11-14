@@ -152,6 +152,12 @@ class LidarSampler:
                                 int(t.miny + t.size - 1) // self.CELL + 1):
                     self._grid.setdefault((cx, cy), []).append(t)
 
+    def res_of(self, used: list[str]) -> float:
+        return min(self.by_key[k].res for k in used) if used else 0
+
+    def prefetch(self, xs: np.ndarray, ys: np.ndarray) -> None:
+        pass
+
     def tile_for(self, x: float, y: float) -> Tile | None:
         for t in self._grid.get((int(x) // self.CELL, int(y) // self.CELL), ()):
             if t.minx <= x < t.minx + t.size and t.miny <= y < t.miny + t.size:

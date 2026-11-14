@@ -50,7 +50,7 @@ use them as labels.
   by star labels. Print the visit count so the M4 gate is visible.
 - `rank.py` — watercourse-level ranking, same scheme on groups
   (`--groups`, `--out`, `--max-features` args; main at line 83).
-- `boundary.scotland` — the in-Scotland check (`known.py` uses it via
+- `boundary.region` — the in-Britain check (`known.py` uses it via
   `shapely`).
 - Pipeline order today: `build -> refine -> watershed -> known -> analyse ->
   export-groups -> rank`. It becomes `... -> known -> visits -> analyse -> ...`.
@@ -127,7 +127,7 @@ Done as planned, with recorded additions:
 
 - The in-Scotland check needs a boundary, and CI has no raw data. So
   `boundary.py` now caches the compiled polygon in the committed
-  `data/boundary.scotland.geojson` (small, deterministic; refresh by deleting
+  `data/boundary.geojson` (small, deterministic; refresh by deleting
   it and re-running from a checkout with `data/raw/`). `known.py` and
   `visits.py` both read the cache.
 - `mise run test` gained `pipeline:visits-selftest` alongside `pipeline:selftest`.
@@ -143,7 +143,7 @@ removing a visit restores `known.json` byte-for-byte.
    - discover `data/visits/*/visit.yaml` (skip leading-underscore dirs; add
      `data/visits/_sample/` as the template)
    - strict validate: required fields, types, unknown fields rejected,
-     `stars` int 0–4, `date` format, location inside `boundary.scotland`,
+     `stars` int 0–4, `date` format, location inside `boundary.region`,
      images (extension allow-list jpg/jpeg/png/webp, files exist, ~400 KB
      each, max 6 per visit)
    - snap via the shared helper from `known.py` (refactor first)

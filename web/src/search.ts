@@ -178,7 +178,7 @@ const SHOULDER = 0.8;
 const MAX_REACHES_PER_CHAIN = 24;
 
 /**
- * Backstop only, not a display cap: a 2% gradient query over all of Scotland
+ * Backstop only, not a display cap: a 2% gradient query over the whole region
  * finds ~205k reaches in 1.4 s, and nothing realistic comes close. Hitting this
  * is reported to the UI, never silent.
  */

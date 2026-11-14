@@ -2,7 +2,7 @@
 
 OS Open Rivers knows about lakes and river outlets but does not distinguish a
 natural loch outlet from a dam. OpenStreetMap does: this module downloads the
-small set of Scottish features tagged ``waterway=dam`` or ``man_made=dam``,
+small set of features tagged ``waterway=dam`` or ``man_made=dam``,
 buffers their actual point/line geometry, and records the affected sample runs
 in profiles.json. The browser can then hide dam spillways without deleting them
 from the dataset.
@@ -28,14 +28,14 @@ OVERPASS = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 )
-# OSM relation 58446 is Scotland; Overpass area IDs add 3,600,000,000.
-QUERY = """[out:json][timeout:180];
-area(3600058446)->.scotland;
+# Great Britain as (south, west, north, east).
+GB = "49.8,-8.7,60.9,1.8"
+QUERY = f"""[out:json][timeout:180];
 (
-  node["waterway"="dam"](area.scotland);
-  way["waterway"="dam"](area.scotland);
-  node["man_made"="dam"](area.scotland);
-  way["man_made"="dam"](area.scotland);
+  node["waterway"="dam"]({GB});
+  way["waterway"="dam"]({GB});
+  node["man_made"="dam"]({GB});
+  way["man_made"="dam"]({GB});
 );
 out geom;
 """

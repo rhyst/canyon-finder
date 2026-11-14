@@ -1,8 +1,7 @@
 # Canyon Finder — architecture
 
 Finds watercourse reaches steep enough to be worth looking at for canyoning: X metres of
-drop over Y metres of channel. All of Scotland is precompiled into a ~22 MB payload
-(10 MB gzipped) that the browser searches itself, so gradient and length sliders re-query
+drop over Y metres of channel. Great Britain is precompiled into a ~46 MB payload (20 MB gzipped) that the browser searches itself, so gradient and length sliders re-query
 2 million elevation samples in ~200 ms with no server.
 
 The user-facing overview lives in the top-level README; this document is the technical
@@ -19,9 +18,11 @@ web/        interactive map (Vite + MapLibre + a Web Worker doing the search)
 | --- | --- | --- | --- |
 | Watercourse network | [OS Open Rivers](https://docs.os.uk/os-downloads/products/water-portfolio/os-open-rivers) (GeoPackage, 52 MB) | OGL v3 | Topological link/node network with flow direction — gives connected channels and catchment accumulation for free. 63,210 km in Scotland. |
 | National elevation | [OS Terrain 50](https://docs.os.uk/os-downloads/products/land-and-terrain-portfolio/os-terrain-50) (ASCII grid, 162 MB) | OGL v3 | The only open, genuinely bare-earth DTM covering all of Scotland. 50 m post spacing. |
-| High-res elevation | [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) via `s3://srsp-open-data` | OGL v3 (some phase-2 LAZ is non-commercial) | 0.5–2 m DTMs as cloud-optimised GeoTIFFs, read over HTTP range requests. Patchy coverage — see below. |
+| High-res elevation, Scotland | [Scottish public sector LiDAR](https://remotesensingdata.gov.scot/) via `s3://srsp-open-data` | OGL v3 (some phase-2 LAZ is non-commercial) | 0.5–2 m DTMs as cloud-optimised GeoTIFFs, read over HTTP range requests. Patchy coverage — see below. |
+| High-res elevation, England | [Environment Agency LIDAR composite DTM](https://environment.data.gov.uk/survey), 2 m | OGL v3 | National composite as zipped 5 km tiles. Downloaded one at a time: the service rejects parallel requests and its WCS allows about one request every ten seconds. |
+| High-res elevation, Wales | [Welsh Government LiDAR DTM](https://datamap.gov.wales/) | OGL v3 | One national cloud-optimised GeoTIFF, read at its 2 m overview over HTTP range requests. |
 | Dam structures | [OpenStreetMap](https://www.openstreetmap.org/) | ODbL | Line features tagged `waterway=dam` or `man_made=dam`; crests at least 100 m long flag likely spillways and embankment slopes. |
-| Country outline | Natural Earth 10m map subunits | Public domain | Clips the payload to Scotland. |
+| Region outline | Natural Earth 10m map subunits | Public domain | Clips the payload and Canyon Log to Great Britain. |
 | Known descents | [Canyon Log](https://canyonlog.org/map/) via `wp-json/mapster-wp-maps/map?id=17437` | No stated licence — credit it, ask before redistributing | 148 community-logged Scottish canyons, snapped onto our profiles. Calibrates the thresholds and measures recall. |
 
 The data files are all OGL v3 unless noted in the table above; `./fetch.sh` downloads
@@ -57,11 +58,12 @@ Copernicus GLO-30 (surface model, includes tree canopy), OS Terrain 5 (not open)
 ```bash
 cd pipeline
 ./fetch.sh                                         # raw open data, ~215 MB
-uv run python -m canyon.build                      # all Scotland, ~20 s
+uv run python -m canyon.build                      # whole region, ~2 min
 uv run python -m canyon.build --bbox 270000 755000 295000 780000   # one region
 uv run python -m canyon.validate                   # check against known venues
 uv run python -m canyon.coverage                   # LiDAR coverage of the shortlist
-uv run python -m canyon.refine --bbox 283000 692000 302000 704000  # LiDAR re-profile
+uv run python -m canyon.refine --bbox 283000 692000 302000 704000  # Scottish LiDAR re-profile
+uv run python -m canyon.refine --source england-wales              # hours; resumes where it stopped
 uv run python -m canyon.lidarmap                   # coverage outline -> lidar.json
 uv run python -m canyon.dams                       # OSM dams -> profile flags
 uv run python -m canyon.known                      # logged canyons -> known.json

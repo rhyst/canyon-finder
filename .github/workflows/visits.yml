@@ -2,7 +2,7 @@
 #
 # The visits stage runs against the committed compiled payload — no raw OS
 # data needed, and the Scotland boundary comes from the committed
-# data/boundary.scotland.geojson cache. It regenerates known.json and the
+# data/boundary.geojson cache. It regenerates known.json and the
 # image copies; the PR must already include those, so contributors run
 # `mise run pipeline:visits` locally and commit the output.
 name: visits
@@ -11,7 +11,7 @@ on:
   pull_request:
     paths:
       - "data/visits/**"
-      - "data/boundary.scotland.geojson"
+      - "data/boundary.geojson"
       - "pipeline/canyon/visits.py"
       - "pipeline/canyon/boundary.py"
       - "pipeline/canyon/known.py"

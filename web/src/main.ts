@@ -61,8 +61,8 @@ function applyPreset(name: string) {
 
 const map = new MapLibreMap({
   container: 'map',
-  center: saved.view?.center ?? [-4.6, 56.9],
-  zoom: saved.view?.zoom ?? 6.4,
+  center: saved.view?.center ?? [-3.6, 55.2],
+  zoom: saved.view?.zoom ?? 5.4,
   style: {
     version: 8,
     sources: Object.fromEntries(Object.entries(BASEMAPS).map(([k, b]) => [
@@ -467,6 +467,7 @@ function readQuery(): Query {
   el('confOut').textContent = `${num('minConf')} m`;
   el('altOut').textContent = `${num('minAlt')} m`;
   el('dropOut').textContent = `${num('minDrop')} m`;
+  el('promOut').textContent = `${num('minPromise')}`;
 
   return {
     minGradient: minGrad,
@@ -528,20 +529,30 @@ function renderResults(keepPlace = false) {
     const on = loggedOn(g, known, payload.spacing);
     if (on.length) loggedHere.set(g.key, on.map((k) => k.name));
   }
+  // Set membership, not a scan per candidate: with nothing capped this runs
+  // over tens of thousands of reaches and as many groups.
+  const keepGroups = () => {
+    const keep = new Set(groups.map((g) => g.key));
+    view = view.filter((c) => keep.has(groupOf(c)));
+  };
+  // Measured against everything the filters reach, not the displayed subset,
+  // so the view toggles do not move it. Promise is a filter, so it does.
+  let reached = results;
+  const minPromise = Number(el<HTMLInputElement>('minPromise').value) / 100;
+  if (groupModel && minPromise > 0) {
+    groups = groups.filter((g) => promise.get(g.key)! >= minPromise);
+    keepGroups();
+    reached = view;
+  }
   if (el<HTMLInputElement>('hideLogged').checked) {
     // Overlap first — a canyon whose window sits on this water — with the
     // distance as a fallback for entries that snapped to a neighbouring burn.
     groups = groups.filter((g) => !loggedHere.has(g.key)
       && (nearby.get(g.key) ?? Infinity) > LOGGED_RADIUS);
-    // Set membership, not a scan per candidate: with nothing capped this runs
-    // over tens of thousands of reaches and as many groups.
-    const keep = new Set(groups.map((g) => g.key));
-    view = view.filter((c) => keep.has(groupOf(c)));
+    keepGroups();
   }
 
-  // Measured against everything the search found, not the displayed subset, so
-  // it reports what the filters reach rather than what the view toggles show.
-  const hit = covered(worthwhile, results).length;
+  const hit = covered(worthwhile, reached).length;
   const took = stats.ms >= 1000 ? `${(stats.ms / 1000).toFixed(1)} s` : `${stats.ms.toFixed(0)} ms`;
   el('status').innerHTML =
     `${groups.length.toLocaleString()} watercourses · ` +
@@ -935,7 +946,7 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
 /** The filter panel, by element id. Checkboxes save as 'true'/'false'. */
 const FILTER_IDS = [
   'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrop', 'minDrain', 'maxDrain',
-  'minConf', 'minAlt', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'showKnown', 'showLidar', 'basemap',
+  'minConf', 'minAlt', 'minPromise', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'showKnown', 'showLidar', 'basemap',
 ];
 
 function saveFilters() {
@@ -997,7 +1008,9 @@ document.querySelectorAll('input[type=range]').forEach((input) => {
     el<HTMLSelectElement>('preset').value = 'custom';
     readQuery();
     clearTimeout(debounce);
-    debounce = setTimeout(() => { saveFilters(); run(); }, 60) as unknown as number;
+    // Promise is applied to the grouped results, so it needs no new search.
+    const apply = input.id === 'minPromise' ? renderResults : run;
+    debounce = setTimeout(() => { saveFilters(); apply(); }, 60) as unknown as number;
   });
 });
 el('sort').addEventListener('change', () => { saveFilters(); renderResults(); });

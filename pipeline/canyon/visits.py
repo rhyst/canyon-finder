@@ -33,7 +33,7 @@ from pyproj import Transformer
 from shapely.geometry import Point
 
 from . import payload
-from .boundary import scotland
+from .boundary import region
 from .known import SnapFailure, snap_grid, snap_location
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -91,12 +91,12 @@ def _location(v, errs: list[str], boundary, to_bng) -> tuple[float, float] | Non
         errs.append(f"location must be [lon, lat] (got {v!r})")
         return None
     lon, lat = float(v[0]), float(v[1])
-    if not (-11.0 <= lon <= 1.5 and 54.0 <= lat <= 61.0):
+    if not (-11.0 <= lon <= 1.8 and 49.8 <= lat <= 61.0):
         errs.append(f"location [{lon}, {lat}] is not in the UK")
         return None
     x, y = to_bng.transform(lon, lat)
     if not boundary.contains(Point(x, y)):
-        errs.append(f"location [{lon}, {lat}] is not inside Scotland — "
+        errs.append(f"location [{lon}, {lat}] is not inside Great Britain — "
                     f"is the point wrong?")
         return None
     return lon, lat
@@ -354,8 +354,8 @@ def main() -> None:
     p.add_argument("--max-len", type=float, default=1200)
     p.add_argument("--max-snap", type=float, default=500)
     p.add_argument("--boundary", type=Path,
-                   default=root / "data" / "boundary.scotland.geojson",
-                   help="committed cache of the Scotland polygon; rebuilt from "
+                   default=root / "data" / "boundary.geojson",
+                   help="committed cache of the region polygon; rebuilt from "
                         "--raw only when missing")
     p.add_argument("--selftest", action="store_true",
                    help="run the validation/merge fixtures (no data needed)")
@@ -372,7 +372,7 @@ def main() -> None:
                   if d.is_dir() and not d.name.startswith("_"))
 
     # The committed cache makes this runnable without the raw data (CI).
-    boundary = scotland(a.raw, a.boundary)
+    boundary = region(a.raw, a.boundary)
     to_bng = Transformer.from_crs(4326, 27700, always_xy=True)
 
     errors: list[str] = []
@@ -548,10 +548,11 @@ links:
     _, errs = run(text, images={f"a{i}.png": PNG_1PX for i in range(7)})
     ok(any("at most 6" in e for e in errs), f"7 images not caught: {errs}")
 
-    # location inside the UK but outside Scotland
+    # location inside the UK but outside the covered region
     _, errs = run(good.replace("[-5.4123, 56.8765]", "[-2.5, 54.05]"),
                   images={"top.png": PNG_1PX, "bottom.png": PNG_1PX})
-    ok(any("not inside Scotland" in e for e in errs), f"England not rejected: {errs}")
+    ok(any("not inside Great Britain" in e for e in errs),
+       f"uncovered location not rejected: {errs}")
 
     # corrections: unknown key, negative value
     for text, what in (

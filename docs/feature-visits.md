@@ -114,7 +114,7 @@ Responsibilities:
 
 1. **Validate** every `data/visits/*/visit.yaml`:
    - required fields present, types correct, no unknown fields
-   - `location` inside Scotland (same `boundary.scotland` check as `known.py`)
+   - `location` inside Great Britain (same `boundary.region` check as `known.py`)
    - `date` well-formed; `pitches`/`highest_pitch_m` positive integers;
      `stars` integer 0–4
    - images: allowed extensions (jpg/jpeg/png/webp), referenced files exist,

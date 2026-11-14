@@ -136,10 +136,10 @@ check('the prescreen does not hide reaches', () => {
   console.log(`      screened found ${found.size} reaches; brute force saw ${brute} steep windows`);
 });
 
-check('coordinates decode to plausible Scottish positions', () => {
+check('coordinates decode to plausible positions', () => {
   for (const c of fill(base.candidates.slice(0, 2000))) {
-    assert.ok(c.lat > 54.5 && c.lat < 61.1, `lat ${c.lat}`);
-    assert.ok(c.lon > -8.7 && c.lon < 0.2, `lon ${c.lon}`);
+    assert.ok(c.lat > 49.8 && c.lat < 61.1, `lat ${c.lat}`);
+    assert.ok(c.lon > -8.7 && c.lon < 1.9, `lon ${c.lon}`);
     assert.ok(c.coords.length >= 2, 'empty geometry');
   }
 });
@@ -213,17 +213,17 @@ check('mapped dams flag their spillway reaches', () => {
   const wide = search(query({ minGradient: 0.08, minLength: 200, maxLength: 2000,
                               minDrain: 1 }));
   const examples: [number, number, string][] = [
-    [6995, 235, 'Upper Glendevon'],
-    [6995, 348, 'Lower Glendevon'],
-    [7004, 107, 'Glensherup'],
+    [7418, 235, 'Upper Glendevon'],
+    [7418, 348, 'Lower Glendevon'],
+    [7427, 107, 'Glensherup'],
   ];
   for (const [chain, sample, name] of examples) {
     assert.ok(wide.candidates.some((c) => c.chain === chain && c.i <= sample
       && c.j >= sample && c.dam), `${name} was not flagged as a dam`);
   }
   const smallStructures: [number, number, string][] = [
-    [7010, 20, 'Castleton Burn'],
-    [7380, 37, 'Allt an Tuim Bhric'],
+    [7433, 20, 'Castleton Burn'],
+    [7803, 37, 'Allt an Tuim Bhric'],
   ];
   for (const [chain, sample, name] of smallStructures) {
     assert.ok(wide.candidates.some((c) => c.chain === chain && c.i <= sample
@@ -339,8 +339,8 @@ check('the browser reproduces the fitted group ranking', () => {
     `${graded(500)} of the graded canyons, ${zero(50)}/${zero(250)}/${zero(500)} zero-star`);
 
   // canyon.rank reported these from the Python fit; the TS transform must agree.
-  assert.equal(graded(50), 16, 'top-50 graded recall differs from the Python fit');
-  assert.equal(graded(500), 50, 'top-500 graded recall differs from the Python fit');
+  assert.equal(graded(50), 15, 'top-50 graded recall differs from the Python fit');
+  assert.equal(graded(500), 75, 'top-500 graded recall differs from the Python fit');
 });
 
 check('logged canyons sit high on the promise scale', () => {

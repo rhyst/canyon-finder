@@ -22,7 +22,7 @@ a YAML file.
    | --- | --- | --- |
    | `author` | yes | Your name or handle |
    | `date` | yes | `YYYY-MM-DD` |
-   | `location` | yes | `[lon, lat]` — the point closest to the canyon, in Scotland |
+   | `location` | yes | `[lon, lat]` — the point closest to the canyon, in Great Britain |
    | `stars` | yes | `0` = dud, `1`–`4` = worth it |
    | `name` | no | Used for new entries; ignored when you attach to a logged canyon |
    | `description` | no | What it's like — the details that matter |

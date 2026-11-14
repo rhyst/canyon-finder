@@ -42,12 +42,12 @@ depends = ["web:test", "pipeline:selftest", "pipeline:visits-selftest"]
 # ── pipeline ──────────────────────────────────────────────────────────────
 
 [tasks."pipeline:build"]
-description = "Compile OS data -> profiles.bin + profiles.json for all of Scotland (~20 s)"
+description = "Compile OS data -> profiles.bin + profiles.json for the whole region (~2 min)"
 dir = "pipeline"
 run = "uv run python -m canyon.build"
 
 [tasks."pipeline:region"]
-description = "Build one region by bounding box instead of all Scotland"
+description = "Build one region by bounding box instead of the whole region"
 dir = "pipeline"
 usage = '''
 arg "<minx>" help="bbox west edge (OSGB easting, e.g. 270000)"
@@ -58,7 +58,7 @@ arg "<maxy>" help="bbox north edge"
 run = "uv run python -m canyon.build --bbox ${usage_minx?} ${usage_miny?} ${usage_maxx?} ${usage_maxy?}"
 
 [tasks."pipeline:refine"]
-description = "Re-profile a region with LiDAR where tiles exist (rewrites elevation in the payload)"
+description = "Re-profile a Scottish region with LiDAR where tiles exist (rewrites elevation in the payload)"
 dir = "pipeline"
 usage = '''
 arg "<minx>" help="bbox west edge (OSGB easting)"
@@ -67,6 +67,11 @@ arg "<maxx>" help="bbox east edge"
 arg "<maxy>" help="bbox north edge"
 '''
 run = "uv run python -m canyon.refine --bbox ${usage_minx?} ${usage_miny?} ${usage_maxx?} ${usage_maxy?}"
+
+[tasks."pipeline:refine-south"]
+description = "Re-profile England and Wales with LiDAR (hours; resumes where it stopped)"
+dir = "pipeline"
+run = "uv run python -m canyon.refine --source england-wales"
 
 [tasks."pipeline:watershed"]
 description = "Drainage area per sample — one national pass (~1 min, ~1.6 GB)"

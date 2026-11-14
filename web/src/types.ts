@@ -107,6 +107,8 @@ export interface VisitReport {
 export interface KnownCanyon {
   name: string;
   grade: string;
+  /** Canyon Log's quality rating, 0–4; null where nobody has graded it. */
+  stars?: number | null;
   category: string;
   url: string;
   note: string;

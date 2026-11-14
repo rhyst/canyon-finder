@@ -19,7 +19,7 @@ from pyproj import Transformer
 from shapely.geometry import Point
 
 from . import payload, rivers
-from .boundary import scotland
+from .boundary import region
 from .dem import Terrain50
 from .features import confinement
 
@@ -32,11 +32,11 @@ MIN_CHAIN_LENGTH = 100.0
 # Offset at which valley-side rise is recorded per sample.
 CONFINE_RADIUS = 100.0
 
-# Scotland, BNG. The bbox reaches into northern England; chains whose midpoint
-# falls outside the Scotland polygon are dropped.
-BBOX = (0.0, 520_000.0, 500_000.0, 1_300_000.0)
+# Great Britain, BNG.
+BBOX = (0.0, 0.0, 700_000.0, 1_300_000.0)
 SQUARES = """HO HP HT HU HW HX HY HZ NA NB NC ND NE NF NG NH NJ NK NL NM NN NO
-             NR NS NT NU NW NX NY NZ""".split()
+             NR NS NT NU NW NX NY NZ OV SD SE SH SJ SK SM SN SO SP SR SS ST SU
+             SV SW SX SY SZ TA TF TG TL TM TQ TR TV""".split()
 
 
 def max_gradient_at_scale(z: np.ndarray, window: int) -> float:
@@ -64,7 +64,7 @@ def build(raw: Path, out: Path, gpkg: Path, bbox: tuple[float, ...] = BBOX) -> N
     print("loading OS Terrain 50 ...", flush=True)
     dem = Terrain50.load(raw / "terr50", set(SQUARES), cache=raw.parent / "work" / "terr50.npz")
     print(f"  {len(dem.tiles)} tiles  ({time.time() - t0:.0f}s)", flush=True)
-    scot = scotland(raw)
+    covered = region(raw)
 
     print("loading OS Open Rivers ...", flush=True)
     links = rivers.load_links(gpkg, bbox)
@@ -92,7 +92,7 @@ def build(raw: Path, out: Path, gpkg: Path, bbox: tuple[float, ...] = BBOX) -> N
         pts, dist = rivers.resample(coords, SPACING)
         if dist[-1] < MIN_CHAIN_LENGTH or len(pts) < 3:
             continue
-        if not scot.contains(Point(pts[len(pts) // 2])):
+        if not covered.contains(Point(pts[len(pts) // 2])):
             continue
         z_raw = dem.sample(pts[:, 0], pts[:, 1])
         if not np.isfinite(z_raw).all():
@@ -192,7 +192,7 @@ def main() -> None:
                    default=root / "data" / "raw" / "Data" / "oprvrs_gb.gpkg")
     p.add_argument("--bbox", type=float, nargs=4, default=BBOX,
                    metavar=("MINX", "MINY", "MAXX", "MAXY"),
-                   help="BNG extent to compile (default: all Scotland)")
+                   help="BNG extent to compile (default: the whole covered region)")
     a = p.parse_args()
     build(a.raw, a.out, a.rivers, tuple(a.bbox))
 

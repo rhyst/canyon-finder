@@ -44,7 +44,7 @@ export function loadState(): SavedState {
   if (typeof view === 'object' && view !== null) {
     const v = view as Record<string, unknown>;
     const c = v.center;
-    // Scotland, at a zoom the map can actually show.
+    // Britain, at a zoom the map can actually show.
     if (Array.isArray(c) && c.length === 2 && num(c[0]) && num(c[1])
         && c[1] > 50 && c[1] < 70 && c[0] > -12 && c[0] < 4
         && num(v.zoom) && v.zoom >= 1 && v.zoom <= 20) {

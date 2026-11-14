@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Canyon Finder — Scotland</title>
+    <title>Canyon Finder — Great Britain</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
       <header>
         <div>
           <h1>Canyon Finder</h1>
-          <p class="sub">Steep watercourse reaches in Scotland</p>
+          <p class="sub">Steep watercourse reaches in Great Britain</p>
         </div>
         <button id="closeFilters" class="mobile-only icon-button" type="button"
           aria-label="Close filters">×</button>
@@ -23,6 +23,7 @@
           <select id="preset">
             <option value="calibrated">Calibrated shortlist</option>
             <option value="wide">Wide net — prospecting</option>
+            <option value="promising">High promise</option>
             <option value="bigwater">Big water</option>
             <option value="gorge">Tight gorge</option>
             <option value="falls">Waterfall hunting</option>
@@ -75,6 +76,12 @@
           <span>Min altitude at top</span>
           <output id="altOut">0 m</output>
           <input id="minAlt" type="range" min="0" max="800" step="10" value="0" />
+        </label>
+
+        <label class="range">
+          <span>Min promise <em>(watercourse, 50 = median logged)</em></span>
+          <output id="promOut">0</output>
+          <input id="minPromise" type="range" min="0" max="100" step="5" value="0" />
         </label>
 
         <label class="range">
