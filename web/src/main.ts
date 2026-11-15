@@ -17,12 +17,13 @@ import type {
 } from './types';
 import { PRESETS } from './presets';
 import {
-  againstLogged, buildGroups, buildRows, candId, findRow, groupOf, groupScore, loggedOn,
-  nearestLogged,
-  type Group, type GroupModel, type Row,
+  buildGroups, buildRows, candId, findRow, groupOf, loggedOn, nearestLogged,
+  type Group, type Row,
 } from './grouping';
 import { covered, isDud, isWorthwhile, reportedStats, visitReportsHtml, VISIT_SOURCE } from './canyonlog';
-import { esc, fmtArea, reachLine, safeUrl, watercourseLine } from './format';
+import {
+  badges, badgesHtml, esc, fmtArea, rankText, safeUrl, sectionLine, watercourseLine,
+} from './format';
 import { loadState, presetFor, saveState, type SavedSelection } from './state';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -124,13 +125,13 @@ let worthwhile: KnownCanyon[] = []; // graded descents plus positive community v
 const knownByChain = new Map<number, KnownCanyon[]>(); // real descents override a dam proximity flag
 let lidarGeometry: unknown = null; // coverage outline, fetched with the payload
 let scoreModel: ScoreModel | null = null;
-let groupModel: GroupModel | null = null;
-const promise = new Map<string, number>(); // group key -> position against logged canyons
 const nearby = new Map<string, number>(); // group key -> metres to nearest logged
 const loggedHere = new Map<string, string[]>(); // group key -> logged canyons on it
 let results: Candidate[] = []; // everything the worker returned
 let view: Candidate[] = []; // filtered + sorted
-let rows: Row[] = []; // exactly what the list shows: group headers plus expanded reaches
+let scored: { results: Candidate[] | null; key: string; sorted: Candidate[]; groups: Group[] } =
+  { results: null, key: '', sorted: [], groups: [] };
+let rows: Row[] = []; // exactly what the list shows: group headers plus expanded sections
 let selected = -1; // index into `rows`
 let stats = { scanned: 0, ms: 0, totalReaches: 0, truncated: false };
 let queryId = 0;
@@ -145,6 +146,8 @@ const empty = { type: 'FeatureCollection', features: [] } as const;
 const LOGGED_RADIUS = 250;
 // Top of the drainage ceiling slider means "no ceiling" rather than 200 km2.
 const DRAIN_NO_LIMIT = 200;
+// Likewise the length slider.
+const LENGTH_NO_LIMIT = 5000;
 
 map.on('load', () => {
   // Under the data, over the basemap: where the high-resolution elevation is.
@@ -377,13 +380,12 @@ function knownGeoJSON() {
 /* ---------- data load ---------- */
 
 async function boot() {
-  const [meta, bin, knownDoc, score, groups, lidar] = await Promise.all([
+  const [meta, bin, knownDoc, score, lidar] = await Promise.all([
     fetch('data/profiles.json').then((r) => r.json()),
     fetch('data/profiles.bin').then((r) => r.arrayBuffer()),
     fetch('data/known.json').then((r) => (r.ok ? r.json() : { canyons: [] }))
       .catch(() => ({ canyons: [] })),
     fetch('data/score.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    fetch('data/group-score.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
     fetch('data/lidar.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
   if (lidar) {
@@ -393,18 +395,20 @@ async function boot() {
     }
   }
   payload = meta;
-  // known.json addresses the payload by (chain, i, j) and both models were fitted
-  // on reaches found in it. If any of them was built against a different payload,
-  // using it anyway means logged canyons drawn on the wrong burn and a promise
-  // column scored against reaches that no longer exist — wrong, and quietly so.
-  // Dropping what does not match is worse-looking and better.
+  // known.json addresses the payload by (chain, i, j) and the model was fitted
+  // on sections found in it. If either was built against a different payload,
+  // using it anyway means logged canyons drawn on the wrong burn and ranks
+  // fitted to water that no longer exists — wrong, and quietly so. Dropping
+  // what does not match is worse-looking and better.
   const fresh = <T extends { index_id?: string }>(doc: T | null, name: string) => {
     if (!doc || !meta.index_id || doc.index_id === meta.index_id) return doc;
     stale.push(name);
     return null;
   };
   scoreModel = fresh(score, 'score.json');
-  groupModel = fresh(groups, 'group-score.json');
+  const five = scoreModel?.capture?.find(([share]) => share === 0.05);
+  el('capture').textContent = five
+    ? `The top 5% hold ${(five[1] * 100).toFixed(0)}% of them.` : '';
   const usableKnown = fresh(knownDoc, 'known.json');
   known = ((usableKnown?.canyons ?? []) as KnownCanyon[]).map((k) => ({
     ...k,
@@ -457,9 +461,10 @@ function readQuery(): Query {
   let minLen = num('minLen');
   let maxLen = num('maxLen');
   if (maxLen < minLen) maxLen = minLen;
+  const anyLength = maxLen >= LENGTH_NO_LIMIT;
 
   el('gradOut').textContent = `${(minGrad * 100).toFixed(0)}–${(maxGrad * 100).toFixed(0)}%`;
-  el('lenOut').textContent = `${minLen}–${maxLen} m`;
+  el('lenOut').textContent = anyLength ? `${minLen} m +` : `${minLen}–${maxLen} m`;
   const maxDrain = num('maxDrain');
   el('drainOut').textContent = maxDrain >= DRAIN_NO_LIMIT
     ? `${num('minDrain')} km² +`
@@ -467,22 +472,18 @@ function readQuery(): Query {
   el('confOut').textContent = `${num('minConf')} m`;
   el('altOut').textContent = `${num('minAlt')} m`;
   el('dropOut').textContent = `${num('minDrop')} m`;
-  el('promOut').textContent = `${num('minPromise')}`;
 
   return {
     minGradient: minGrad,
     maxGradient: maxGrad,
     minLength: minLen,
-    maxLength: maxLen,
+    maxLength: anyLength ? Infinity : maxLen,
     minDrop: num('minDrop'),
     minDrain: num('minDrain'),
     maxDrain: maxDrain >= DRAIN_NO_LIMIT ? Infinity : maxDrain,
-    // The channel-length bound stays in the engine for tools/thresholds.ts to
-    // measure against; the UI does not expose it.
-    minCatchment: 0,
-    maxCatchment: Infinity,
     minConfine: num('minConf'),
     minAltitude: num('minAlt'),
+    topShare: num('topShare') / 100,
     sort: el<HTMLSelectElement>('sort').value as SortKey,
   };
 }
@@ -511,54 +512,45 @@ function renderResults(keepPlace = false) {
   const damsHidden = el<HTMLInputElement>('hideDams').checked
     ? list.filter(hideDam).length : 0;
   if (damsHidden) list = list.filter((c) => !hideDam(c));
-  if (el<HTMLInputElement>('viewOnly').checked) {
-    const b = map.getBounds();
-    list = list.filter((c) => b.contains([c.lon, c.lat]));
+  // Grouped over everything the filters reach, not the part on screen, and
+  // cached so panning with "limit to map view" does not regroup it all.
+  const cacheKey = `${q.sort}:${damsHidden}`;
+  if (scored.results !== results || scored.key !== cacheKey) {
+    const sorted = [...list].sort((a, b) => b[q.sort] - a[q.sort]);
+    const all = buildGroups(sorted, q.sort);
+    nearby.clear();
+    loggedHere.clear();
+    for (const g of all) {
+      nearby.set(g.key, nearestLogged(g, known));
+      const on = loggedOn(g, known, payload.spacing);
+      if (on.length) loggedHere.set(g.key, on.map((k) => k.name));
+    }
+    scored = { results, key: cacheKey, sorted, groups: all };
   }
-  const key = q.sort as keyof Candidate;
-  const memberKey = (q.sort === 'promise' ? 'score' : key) as keyof Candidate;
-  view = [...list].sort((a, b) => (b[memberKey] as number) - (a[memberKey] as number));
-  let groups = buildGroups(view, q.sort, payload.spacing, groupModel);
-
-  promise.clear();
-  nearby.clear();
-  loggedHere.clear();
-  for (const g of groups) {
-    promise.set(g.key, groupScore(g, groupModel));
-    nearby.set(g.key, nearestLogged(g, known));
-    const on = loggedOn(g, known, payload.spacing);
-    if (on.length) loggedHere.set(g.key, on.map((k) => k.name));
-  }
-  // Set membership, not a scan per candidate: with nothing capped this runs
-  // over tens of thousands of reaches and as many groups.
-  const keepGroups = () => {
-    const keep = new Set(groups.map((g) => g.key));
-    view = view.filter((c) => keep.has(groupOf(c)));
-  };
-  // Measured against everything the filters reach, not the displayed subset,
-  // so the view toggles do not move it. Promise is a filter, so it does.
-  let reached = results;
-  const minPromise = Number(el<HTMLInputElement>('minPromise').value) / 100;
-  if (groupModel && minPromise > 0) {
-    groups = groups.filter((g) => promise.get(g.key)! >= minPromise);
-    keepGroups();
-    reached = view;
-  }
+  view = scored.sorted;
+  let groups = scored.groups;
   if (el<HTMLInputElement>('hideLogged').checked) {
     // Overlap first — a canyon whose window sits on this water — with the
     // distance as a fallback for entries that snapped to a neighbouring burn.
     groups = groups.filter((g) => !loggedHere.has(g.key)
       && (nearby.get(g.key) ?? Infinity) > LOGGED_RADIUS);
-    keepGroups();
+    const keep = new Set(groups.map((g) => g.key));
+    view = view.filter((c) => keep.has(groupOf(c)));
+  }
+  if (el<HTMLInputElement>('viewOnly').checked) {
+    const b = map.getBounds();
+    view = view.filter((c) => b.contains([c.lon, c.lat]));
+    const shown = new Set(view.map(groupOf));
+    groups = groups.filter((g) => shown.has(g.key));
   }
 
-  const hit = covered(worthwhile, reached).length;
-  const took = stats.ms >= 1000 ? `${(stats.ms / 1000).toFixed(1)} s` : `${stats.ms.toFixed(0)} ms`;
+  // Measured against everything the filters reach, not the displayed subset,
+  // so the view toggles do not move it.
+  const hit = covered(worthwhile, results).length;
   el('status').innerHTML =
-    `${groups.length.toLocaleString()} watercourses · ` +
-    `${view.length.toLocaleString()} reaches · ${took}` +
-    (damsHidden ? ` · ${damsHidden.toLocaleString()} large-dam reaches hidden` : '') +
-    (stats.truncated ? ' · <span class="trunc">search truncated</span>' : '') +
+    `${view.length.toLocaleString()} sections on ` +
+    `${groups.length.toLocaleString()} watercourses` +
+    (damsHidden ? ` · ${damsHidden.toLocaleString()} at large dams hidden` : '') +
     (worthwhile.length ? ` · <span class="known-hit">catches ${hit}/${worthwhile.length} ` +
       `logged descents</span>` : '') +
     (stale.length ? ` · <span class="trunc">ignoring ${esc(stale.join(', '))}: ` +
@@ -614,15 +606,17 @@ function renderRow(row: Row, i: number): HTMLLIElement {
   li.setAttribute('aria-selected', String(i === selected));
   const { group, cand } = row;
 
+  const rank = (c: Candidate) =>
+    (scoreModel ? `<span class="promise">${rankText(c.rank)}</span> · ` : '');
+  const facts = (c: Candidate) =>
+    `${c.drop.toFixed(0)} m over ${c.length.toFixed(0)} m · ${fmtArea(c.drain)} draining`;
   if (cand) {
-    const rp = scoreModel ? againstLogged(cand.score, scoreModel.graded_scores) : null;
     li.className = 'reach';
     li.innerHTML = `
       <span class="name">${cand.drop.toFixed(0)} m over ${cand.length.toFixed(0)} m</span>
       <span class="grad">${(cand.gradient * 100).toFixed(0)}%</span>
-      <span class="meta">${rp === null ? '' : `<span class="promise">reach promise ${(rp * 100).toFixed(0)}</span> · `}${cand.dam ? '<span class="tag mini dam">dam</span> · ' : ''}steepest 100 m ${(cand.steepest * 100).toFixed(0)}% ·
-        confinement ${cand.confine.toFixed(0)} m · ${fmtArea(cand.drain)} draining ·
-        top ${cand.top.toFixed(0)} m</span>`;
+      <span class="meta">${rank(cand)}${fmtArea(cand.drain)} draining ·
+        top ${cand.top.toFixed(0)} m<br>${badgesHtml(badges(cand, scoreModel))}</span>`;
   } else {
     const n = group.members.length;
     li.className = 'group';
@@ -631,15 +625,9 @@ function renderRow(row: Row, i: number): HTMLLIElement {
       <span class="name">${multi ? `<span class="chev">${expanded.has(group.key)
         ? '▾' : '▸'}</span> ` : ''}${group.name}</span>
       <span class="grad">${(group.best.gradient * 100).toFixed(0)}%</span>
-      <span class="meta">${groupModel
-        ? `<span class="promise">promise ${(promise.get(group.key)! * 100).toFixed(0)}</span> · `
-        : ''}${loggedTag(group)}${multi
-        ? `${n} reaches · ${group.steepDrop.toFixed(0)} m of drop in
-           ${(group.steepLength / 1000).toFixed(1)} km of steep channel ·
-           ${group.spanDrop.toFixed(0)} m over a ${(group.spanLength / 1000).toFixed(1)} km span`
-        : `${group.best.drop.toFixed(0)} m over ${group.best.length.toFixed(0)} m ·
-           steepest 100 m ${(group.best.steepest * 100).toFixed(0)}%`} ·
-        ${group.best.dam ? '<span class="tag mini dam">dam</span> · ' : ''}${fmtArea(group.best.drain)} draining · ${group.best.dem} DEM</span>`;
+      <span class="meta">${rank(group.best)}${loggedTag(group)}${multi
+        ? `best of ${n} sections: ` : ''}${facts(group.best)}<br>${
+        badgesHtml(badges(group.best, scoreModel))}</span>`;
   }
 
   li.onclick = (e) => {
@@ -693,15 +681,15 @@ function selectCandidate(id: string) {
 
 function contextOf(group: Group) {
   return {
-    promise: groupModel ? (promise.get(group.key) ?? 0) : null,
     logged: loggedHere.has(group.key)
       || (nearby.get(group.key) ?? Infinity) <= LOGGED_RADIUS,
     loggedNames: loggedHere.get(group.key),
   };
 }
 
-function reachPromise(c: Candidate): number | null {
-  return scoreModel ? againstLogged(c.score, scoreModel.graded_scores) : null;
+function sectionStats(c: Candidate): string {
+  return `${sectionLine(c, Boolean(scoreModel))}` +
+    `<div class="badges">${badgesHtml(badges(c, scoreModel))}</div>`;
 }
 
 /** The "logged" tag for a list row: which canyons sit on this water when the
@@ -726,16 +714,15 @@ function select(idx: number) {
     : { kind: 'group', id: group.key } });
 
   if (cand) {
-    // A reach is only meaningful against the watercourse it belongs to, so show
-    // both: the burn as a whole, then this section of it.
+    // Show the burn as a whole, then this section of it.
     const at = group.members.indexOf(cand) + 1;
     showDetail({
       coords: [cand.coords],
       title: `${group.name}` + (group.members.length > 1
-        ? ` <span class="tag alt">reach ${at} of ${group.members.length}</span>`
-        : '') + (cand.dam ? ' <span class="tag dam">dam</span>' : ''),
+        ? ` <span class="tag alt">section ${at} of ${group.members.length}</span>`
+        : ''),
       context: watercourseLine(group, contextOf(group)),
-      stats: reachLine(cand, reachPromise(cand)),
+      stats: sectionStats(cand),
       chain: cand.chain,
       i: cand.i,
       j: cand.j,
@@ -748,9 +735,7 @@ function select(idx: number) {
       coords: group.members.map((c) => c.coords),
       title: group.name,
       context: watercourseLine(group, contextOf(group)),
-      stats: group.members.length > 1
-        ? `best reach: ${reachLine(group.best, reachPromise(group.best))}`
-        : reachLine(first, reachPromise(first)),
+      stats: (group.members.length > 1 ? 'best section: ' : '') + sectionStats(group.best),
       chain: group.chain,
       i: first.i,
       j: last.j,
@@ -820,7 +805,7 @@ function selectKnown(idx: number) {
 interface Detail {
   coords: [number, number][][];
   title: string;
-  context?: string; // the watercourse the reach belongs to
+  context?: string; // the watercourse the section belongs to
   stats: string;
   chain: number;
   i: number;
@@ -928,7 +913,7 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
   const inside = points.filter((p) => p.inside);
 
   host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="Elevation profile of the reach">
+      aria-label="Elevation profile of the section">
     <path d="${line(points)}" fill="none" stroke="#4a5b6b" stroke-width="2"
       stroke-linecap="round" stroke-linejoin="round"/>
     <path d="${line(inside)}" fill="none" stroke="#e8912b" stroke-width="2.5"
@@ -946,7 +931,7 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
 /** The filter panel, by element id. Checkboxes save as 'true'/'false'. */
 const FILTER_IDS = [
   'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrop', 'minDrain', 'maxDrain',
-  'minConf', 'minAlt', 'minPromise', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'showKnown', 'showLidar', 'basemap',
+  'minConf', 'minAlt', 'topShare', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'showKnown', 'showLidar', 'basemap',
 ];
 
 function saveFilters() {
@@ -1008,12 +993,15 @@ document.querySelectorAll('input[type=range]').forEach((input) => {
     el<HTMLSelectElement>('preset').value = 'custom';
     readQuery();
     clearTimeout(debounce);
-    // Promise is applied to the grouped results, so it needs no new search.
-    const apply = input.id === 'minPromise' ? renderResults : run;
-    debounce = setTimeout(() => { saveFilters(); apply(); }, 60) as unknown as number;
+    debounce = setTimeout(() => { saveFilters(); run(); }, 60) as unknown as number;
   });
 });
 el('sort').addEventListener('change', () => { saveFilters(); renderResults(); });
+el('topShare').addEventListener('change', () => {
+  el<HTMLSelectElement>('preset').value = 'custom';
+  saveFilters();
+  run();
+});
 el('viewOnly').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('hideLogged').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('hideDams').addEventListener('change', () => { saveFilters(); renderResults(); });
@@ -1053,6 +1041,12 @@ document.addEventListener('keydown', (e) => {
     }
   }
 });
+
+const about = el<HTMLDialogElement>('about');
+el('openAbout').addEventListener('click', () => about.showModal());
+el('closeAbout').addEventListener('click', () => about.close());
+// A click on the backdrop lands on the dialog itself, not its contents.
+about.addEventListener('click', (e) => { if (e.target === about) about.close(); });
 
 restoreFilters();
 boot();

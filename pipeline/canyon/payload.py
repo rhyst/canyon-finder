@@ -39,11 +39,11 @@ DRAIN_SCALE = 500.0
 def index_id(meta: dict) -> str:
     """Fingerprint of everything a stored (chain, i, j) index depends on.
 
-    known.json, score.json and group-score.json all address this payload by
+    known.json and score.json both address this payload by
     position. Rebuild it — new OS data, a different --bbox, a change to how chains
     are traced — and the chains renumber, so those artifacts point at different
     water: logged canyons drawn on the wrong burn, a wrong "catches N/M", a score
-    fitted to reaches that no longer exist. Nothing about that fails loudly on its
+    fitted to sections that no longer exist. Nothing about that fails loudly on its
     own, so each artifact records this and its reader checks it.
 
     Deliberately covers structure only. refine and watershed rewrite values in
@@ -64,7 +64,7 @@ def require_index(meta: dict, doc: dict, name: str) -> None:
     raise SystemExit(
         f"{name} was built against payload index {got or '(none recorded)'}, but "
         f"this payload is {want}. Re-run the pipeline in order:\n"
-        f"  build -> refine -> watershed -> known -> visits -> analyse -> export-groups -> rank")
+        f"  build -> refine -> watershed -> sections -> known -> visits -> export-sections -> rank")
 
 
 @dataclass

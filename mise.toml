@@ -37,7 +37,7 @@ depends = ["pipeline:build", "web:build"]
 
 [tasks.test]
 description = "Web search-engine tests + pipeline selftests"
-depends = ["web:test", "pipeline:selftest", "pipeline:visits-selftest"]
+depends = ["web:test", "pipeline:selftest", "pipeline:sections-selftest", "pipeline:visits-selftest"]
 
 # ── pipeline ──────────────────────────────────────────────────────────────
 
@@ -111,13 +111,18 @@ description = "Visit validation/merge fixtures (no data needed)"
 dir = "pipeline"
 run = "uv run python -m canyon.visits --selftest"
 
-[tasks."pipeline:analyse"]
-description = "Compare graded descents vs 0-star vs background; fit score.json"
+[tasks."pipeline:sections"]
+description = "Split every profile into steep sections (-> profiles.json; run after refine, ~2 min)"
 dir = "pipeline"
-run = "uv run python -m canyon.analyse"
+run = "uv run python -m canyon.sections"
+
+[tasks."pipeline:sections-selftest"]
+description = "Section splitting on synthetic profiles (no data needed)"
+dir = "pipeline"
+run = "uv run python -m canyon.sections --selftest"
 
 [tasks."pipeline:rank"]
-description = "Fit the watercourse promise ranking (needs groups.json from web:export-groups)"
+description = "Fit the section ranking (needs sections.json from web:export-sections; -> score.json)"
 dir = "pipeline"
 run = "uv run python -m canyon.rank"
 
@@ -144,7 +149,7 @@ dir = "web"
 run = "node --experimental-strip-types test/search.test.ts && node --experimental-strip-types test/visits.test.ts"
 
 [tasks."web:why"]
-description = "Explain a watercourse: its reaches, steepest window, and rank under each preset"
+description = "Explain a watercourse: its sections, their ranks and badges, and which presets show them"
 dir = "web"
 usage = '''
 arg "<name>" help="watercourse name, e.g. \"Glentarken Burn\""
@@ -152,11 +157,11 @@ arg "<name>" help="watercourse name, e.g. \"Glentarken Burn\""
 run = "node --experimental-strip-types tools/why.ts \"${usage_name?}\""
 
 [tasks."web:thresholds"]
-description = "Measure preset recall against logged descents (the README tables)"
+description = "Measure what each preset and filter keeps of the logged descents"
 dir = "web"
 run = "node --experimental-strip-types tools/thresholds.ts"
 
-[tasks."web:export-groups"]
-description = "Export grouped search results for the ranking fit (-> data/work/groups.json)"
+[tasks."web:export-sections"]
+description = "Export every section with its measurements for the ranking fit (-> data/work/sections.json)"
 dir = "web"
-run = "node --experimental-strip-types tools/export-groups.ts"
+run = "node --experimental-strip-types tools/export-sections.ts"

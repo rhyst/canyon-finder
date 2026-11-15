@@ -64,9 +64,10 @@ def parse(loc: dict) -> dict | None:
         "lon": float(lon),
         "lat": float(lat),
         "grade": (grade.group(1).strip() if grade else ""),
-        # Canyon Log's quality rating, 0-4; None where nobody has graded it.
+        # Canyon Log's quality rating: 0 only for its "0 Stars" category, 1-4
+        # from the grade, None where the grade carries no stars.
         "stars": (0 if category == "0 Stars"
-                  else grade.group(1).count("★") if grade else None),
+                  else (grade.group(1).count("★") or None) if grade else None),
         "category": category,
         "url": loc.get("permalink", ""),
         "note": " ".join(text.split())[:240],

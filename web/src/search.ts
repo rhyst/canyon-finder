@@ -59,24 +59,13 @@ export function decode(bin: ArrayBuffer, payload: Payload, score?: ScoreModel | 
     }
     bounds.set([minLon, minLat, maxLon, maxLat], ci * 4);
   });
+  buildSections();
 }
 
-/** Cheap reject: no window short enough to fit the query is anywhere near steep enough. */
-function prescreen(c: ChainMeta, q: Query): boolean {
-  let best = 0;
-  meta.scales.forEach((s, k) => {
-    if (s <= q.maxLength && c.screen[k] > best) best = c.screen[k];
-  });
-  if (meta.scales[0] > q.maxLength) best = Math.max(best, c.screen[0]);
-  // A reach of gradient g contains a shorter window of at least g/2, so this
-  // keeps everything the exact scan could accept.
-  return best >= q.minGradient * 0.5;
-}
-
-/** Prospect score from the fitted model; 0 when no model is loaded.
+/** Section score from the fitted model; 0 when no model is loaded.
  *
- * Feature order, caps and the log transform all come from score.json, so the
- * browser cannot drift from what canyon.analyse fitted.
+ * Feature names, caps and the log transform all come from score.json, so the
+ * browser cannot drift from what canyon.rank fitted.
  */
 function prospect(raw: Record<string, number>): number {
   const m = model;
@@ -100,176 +89,87 @@ function nameAt(c: ChainMeta, i: number): string {
   return name;
 }
 
-/** Prefix sums of confinement, so a window mean costs O(1) inside the scan. */
-let confSum = new Float64Array(0);
+/** Every section in the payload, measured and scored once at load. A section
+ *  is fixed water, so a query only filters this list. */
+let sections: Candidate[] = [];
 
-function prepareChain(o: number, n: number): void {
-  if (confSum.length < n + 1) confSum = new Float64Array(n + 1);
-  confSum[0] = 0;
-  for (let k = 0; k < n; k++) confSum[k + 1] = confSum[k] + conf[o + k];
-}
-
-function windowConfine(i: number, j: number): number {
-  return (confSum[j + 1] - confSum[i]) / (j - i + 1);
-}
-
-/** Steepest qualifying window in [from, to], grown out over its shoulders. */
-function bestWindow(o: number, from: number, to: number, q: Query,
-                    minK: number, maxK: number, sp: number): [number, number] | null {
-  const gradient = (i: number, j: number) =>
-    (z[o + i] - z[o + j]) / ((j - i) * sp * 10);
-  const startOk = (i: number) =>
-    drain[o + i] >= q.minDrain && up[o + i] / 10 >= q.minCatchment
-    && z[o + i] / 10 >= q.minAltitude;
-  // Both measures of water only grow downstream, so testing the foot of a window
-  // bounds the whole of it.
-  const smallEnough = (j: number) =>
-    drain[o + j] <= q.maxDrain && up[o + j] / 10 <= q.maxCatchment;
-
-  let peak = -1;
-  let pi = -1;
-  let pk = -1;
-  for (let i = from; i + minK <= to; i++) {
-    if (!startOk(i)) continue;
-    const kEnd = Math.min(maxK, to - i);
-    for (let k = minK; k <= kEnd; k++) {
-      const g = gradient(i, i + k);
-      if (g < q.minGradient) break; // longer only dilutes; a steeper section
-      if (g > q.maxGradient) continue; // downstream is found from its own start
-      if (!smallEnough(i + k)) break; // and only gets bigger further down
-      if (q.minConfine > 0 && windowConfine(i, i + k) < q.minConfine) continue;
-      if (g > peak) {
-        peak = g;
-        pi = i;
-        pk = k;
-      }
-    }
+function measure(ci: number, i: number, j: number): Candidate {
+  const c = meta.chains[ci];
+  const o = c.o;
+  const sp = meta.spacing;
+  const sub = Math.max(1, Math.round(100 / sp));
+  const length = (j - i) * sp;
+  const drop = (z[o + i] - z[o + j]) / 10;
+  const gradient = drop / length;
+  let steepest = 0;
+  for (let t = i; t + sub <= j; t++) {
+    const g = (z[o + t] - z[o + t + sub]) / (sub * sp * 10);
+    if (g > steepest) steepest = g;
   }
-  if (peak < 0) return null;
-
-  // Grow outwards while the reach keeps most of that steepness, so one steep
-  // zone yields one reach instead of a row of minLength slices. Every filter is
-  // re-checked, since growing upstream moves the start onto a new sample.
-  const floor = Math.max(q.minGradient, peak * SHOULDER);
-  let i = pi;
-  let j = pi + pk;
-  for (;;) {
-    let grew = false;
-    if (j - i < maxK && j < to && gradient(i, j + 1) >= floor && smallEnough(j + 1)
-        && (q.minConfine === 0 || windowConfine(i, j + 1) >= q.minConfine)) {
-      j++;
-      grew = true;
-    }
-    if (j - i < maxK && i > from && startOk(i - 1) && gradient(i - 1, j) >= floor
-        && (q.minConfine === 0 || windowConfine(i - 1, j) >= q.minConfine)) {
-      i--;
-      grew = true;
-    }
-    if (!grew) break;
+  let confSum = 0;
+  let confineMax = 0;
+  for (let t = i; t <= j; t++) {
+    confSum += conf[o + t];
+    if (conf[o + t] > confineMax) confineMax = conf[o + t];
   }
-  return [i, j];
+  const cand: Candidate = {
+    chain: ci,
+    i,
+    j,
+    name: nameAt(c, i) || 'Unnamed burn',
+    length,
+    drop,
+    gradient,
+    steepest: steepest || gradient,
+    catchment: up[o + i] / 10,
+    drain: drain[o + i],
+    drainFoot: drain[o + j],
+    confine: confSum / (j - i + 1),
+    confineMax,
+    // Gradient corrected for the water carrying it: a steep trickle and a
+    // gentle river both score low.
+    power: gradient * drain[o + i] ** 0.45,
+    dam: c.dams?.some(([from, to]) => i <= to && j >= from) ?? false,
+    score: 0,
+    rank: 1,
+    top: z[o + i] / 10,
+    bottom: z[o + j] / 10,
+    dem: c.dem ?? '50 m',
+    lon: lon[o + i],
+    lat: lat[o + i],
+    coords: [],
+  };
+  cand.score = prospect(cand as unknown as Record<string, number>);
+  return cand;
 }
 
-// A reach grows outwards from its steepest window while it holds this share of
-// that peak gradient.
-const SHOULDER = 0.8;
-
-// A long chain can hold many qualifying reaches; this bounds the recursion.
-const MAX_REACHES_PER_CHAIN = 24;
-
-/**
- * Backstop only, not a display cap: a 2% gradient query over the whole region
- * finds ~205k reaches in 1.4 s, and nothing realistic comes close. Hitting this
- * is reported to the UI, never silent.
- */
-const MAX_REACHES = 400_000;
+function buildSections() {
+  sections = [];
+  meta.chains.forEach((c, ci) => {
+    for (const [i, j] of c.sections ?? []) sections.push(measure(ci, i, j));
+  });
+  // Rank is against every section in Great Britain, so it does not move with
+  // the filters.
+  const order = [...sections].sort((a, b) => b.score - a.score);
+  order.forEach((c, k) => { c.rank = (k + 1) / order.length; });
+}
 
 export function search(q: Query): {
   candidates: Candidate[];
   scanned: number;
   truncated: boolean;
 } {
-  const sp = meta.spacing;
-  const minK = Math.max(1, Math.round(q.minLength / sp));
-  const maxK = Math.max(minK, Math.round(q.maxLength / sp));
-  const minDrop = q.minDrop ?? 0; // 0 for no limit
-  const sub = Math.max(1, Math.round(100 / sp)); // 100m window for the steepness flag
-  const out: Candidate[] = [];
-  let scanned = 0;
-
-  for (let ci = 0; ci < meta.chains.length; ci++) {
-    const c = meta.chains[ci];
-    if (!prescreen(c, q)) continue;
-    scanned++;
-    const o = c.o;
-    prepareChain(o, c.n);
-
-    // Steepest window first, then recurse either side of it. Scanning
-    // left-to-right instead would let a long shallow reach swallow the steep
-    // core inside it and, because reaches cannot overlap, hide it completely.
-    const ranges: [number, number][] = [[0, c.n - 1]];
-    let emitted = 0;
-    while (ranges.length && emitted < MAX_REACHES_PER_CHAIN) {
-      const [from, to] = ranges.pop()!;
-      if (to - from < minK) continue;
-      const found = bestWindow(o, from, to, q, minK, maxK, sp);
-      if (!found) continue;
-      const [i, j] = found;
-      emitted++;
-
-      const length = (j - i) * sp;
-      const drop = (z[o + i] - z[o + j]) / 10;
-      // A reach under the drop floor is discarded, but its span stays claimed:
-      // it was the steepest window here, so the recursion only looks to either
-      // side for the next reach.
-      ranges.push([from, i], [j, to]);
-      if (drop < minDrop) continue;
-      let steepest = 0;
-      for (let t = i; t + sub <= j; t++) {
-        const g = (z[o + t] - z[o + t + sub]) / (sub * sp * 10);
-        if (g > steepest) steepest = g;
-      }
-      const catchment = up[o + i] / 10;
-      const area = drain[o + i];
-      const confine = windowConfine(i, j);
-      const dam = c.dams?.some(([from, to]) => i <= to && j >= from) ?? false;
-      out.push({
-        chain: ci,
-        i,
-        j,
-        name: nameAt(c, i) || 'Unnamed burn',
-        length,
-        drop,
-        gradient: drop / length,
-        steepest: steepest || drop / length,
-        catchment,
-        drain: area,
-        confine,
-        dam,
-        score: prospect({
-          gradient: drop / length,
-          catchment_km: catchment,
-          drain_km2: area,
-          confine_100m: confine,
-        }),
-        top: z[o + i] / 10,
-        bottom: z[o + j] / 10,
-        dem: c.dem ?? '50 m',
-        lon: lon[o + i],
-        lat: lat[o + i],
-        // Filled by fillCoords once the scan is done, not here: the scan
-        // discards most windows it looks at.
-        coords: [],
-      });
-    }
-    if (out.length >= MAX_REACHES) {
-      return { candidates: out, scanned, truncated: true };
-    }
-  }
-  return { candidates: out, scanned, truncated: false };
+  const candidates = sections.filter((c) =>
+    c.gradient >= q.minGradient && c.gradient <= q.maxGradient
+    && c.length >= q.minLength && c.length <= q.maxLength
+    && c.drop >= (q.minDrop ?? 0)
+    && c.drain >= q.minDrain && c.drainFoot <= q.maxDrain
+    && c.confine >= q.minConfine && c.top >= q.minAltitude
+    && c.rank <= (q.topShare ?? 1));
+  return { candidates, scanned: sections.length, truncated: false };
 }
 
-/** Attach the polyline for a reach. */
+/** Attach the polyline for a section. */
 export function fillCoords(c: Candidate): Candidate {
   if (c.coords.length) return c;
   const o = meta.chains[c.chain].o;

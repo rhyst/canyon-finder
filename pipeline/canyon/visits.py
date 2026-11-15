@@ -10,9 +10,8 @@ same reach grows a visits list, otherwise a new entry with source "visit"
 is created. Images are copied to web/public/data/visits/ and served by the
 static site — no backend, no database.
 
-The star ratings are labels for the promise-score fit, consumed only behind
---include-visits in canyon.analyse and canyon.rank; the merge itself never
-touches scoring. See docs/feature-visits.md for the design and
+The merge never touches scoring: canyon.rank fits on Canyon Log's own
+ratings only. See docs/feature-visits.md for the design and
 docs/contributing-visits.md for the contributor guide.
 """
 
@@ -307,9 +306,7 @@ def merge(canyons: list[dict], entries: list[tuple[dict, Visit]]) -> list[dict]:
                 "name": (v.name or snapped["watercourse"]
                           or f"Visit by {v.report['author']} ({v.report['date']})"),
                 "grade": v.report.get("grade", ""),
-                # "Visit" is not in analyse's GRADED/REJECTED, so these entries
-                # sit in the skipped bucket until --include-visits reads the
-                # star labels off their reports.
+                # Carries no entry-level stars, so canyon.rank leaves it out.
                 "category": "Visit",
                 "url": "",
                 "note": " ".join((v.report.get("description") or "").split())[:240],

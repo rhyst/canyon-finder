@@ -108,7 +108,7 @@ Rules:
 
 New module `pipeline/canyon/visits.py`, run after `canyon.known` and before
 `analyse`. Order line becomes:
-`build -> refine -> watershed -> known -> visits -> analyse -> export-groups -> rank`.
+`build -> refine -> watershed -> sections -> known -> visits -> export-sections -> rank`.
 
 Responsibilities:
 

@@ -6,38 +6,27 @@ import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { KNOWN_VENUES } from '../src/known.ts';
 import { decode, fillCoords, profile, search } from '../src/search.ts';
-import {
-  againstLogged, buildGroups, buildRows, candId, findRow, groupScore, loggedOn,
-  type Group, type GroupModel,
-} from '../src/grouping.ts';
+import { buildGroups, buildRows, candId, findRow, loggedOn } from '../src/grouping.ts';
 import { GRADED, ZERO_STAR, covered, isDud, isGraded } from '../src/canyonlog.ts';
-import { esc, reachLine, safeUrl, watercourseLine } from '../src/format.ts';
-import type { Candidate, KnownCanyon, Payload, Query } from '../src/types.ts';
+import {
+  badges, badgesHtml, esc, rankText, safeUrl, sectionLine, watercourseLine,
+} from '../src/format.ts';
+import { ALL, PRESETS, presetQuery } from '../src/presets.ts';
+import type { Candidate, KnownCanyon, Payload, Query, ScoreModel } from '../src/types.ts';
 
 const meta: Payload = JSON.parse(await readFile('public/data/profiles.json', 'utf8'));
 const buf = await readFile('public/data/profiles.bin');
-const scoreModel = JSON.parse(await readFile('public/data/score.json', 'utf8'));
+const scoreModel: ScoreModel = JSON.parse(await readFile('public/data/score.json', 'utf8'));
+
+const t0 = performance.now();
 decode(
   buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer,
   meta,
   scoreModel,
 );
+const loadMs = performance.now() - t0;
 
-const query = (q: Partial<Query> = {}): Query => ({
-  sort: 'drop',
-  minGradient: 0.1,
-  maxGradient: 1,
-  minLength: 200,
-  maxLength: 1200,
-  minDrain: 0,
-  maxDrain: Infinity,
-  minCatchment: 0,
-  maxCatchment: Infinity,
-  minConfine: 0,
-  minAltitude: 0,
-  minDrop: 0,
-  ...q,
-});
+const query = (q: Partial<Query> = {}): Query => ({ ...ALL, ...q });
 
 function metres(a: Candidate, lon: number, lat: number) {
   const dx = (a.lon - lon) * Math.cos((lat * Math.PI) / 180) * 111320;
@@ -58,86 +47,72 @@ const check = (name: string, fn: () => void) => {
 
 console.log(`payload: ${meta.chains.length} chains, ${meta.samples} samples`);
 
-const t0 = performance.now();
-const base = search(query());
-const fill = (cs: Candidate[]) => cs.map(fillCoords);
-const ms = performance.now() - t0;
-console.log(`baseline query: ${base.candidates.length} reaches, ${base.scanned} chains, ${ms.toFixed(0)} ms`);
+const t1 = performance.now();
+const everything = search(ALL).candidates;
+const ms = performance.now() - t1;
+console.log(`${everything.length} sections · load ${loadMs.toFixed(0)} ms · query ${ms.toFixed(0)} ms`);
 
-check('a broad query runs interactively (<400ms)', () => assert.ok(ms < 400, `${ms.toFixed(0)}ms`));
+check('loading and querying are interactive', () => {
+  assert.ok(loadMs < 3000, `load ${loadMs.toFixed(0)} ms`);
+  assert.ok(ms < 100, `query ${ms.toFixed(0)} ms`);
+});
 
-check('every known venue turns up as a steep reach on its own watercourse', () => {
+check('the payload carries sections for every chain', () => {
+  assert.ok(meta.chains.every((c) => Array.isArray(c.sections)),
+    'run python -m canyon.sections');
+  assert.ok(everything.length > 10_000, `${everything.length} sections`);
+});
+
+check('every known venue turns up as a section on its own watercourse', () => {
   const missed = KNOWN_VENUES.filter(
-    (v) => !base.candidates.some(
-      (c) => c.name === v.watercourse && metres(c, v.lon, v.lat) < 5000,
-    ),
+    (v) => !everything.some((c) => c.name === v.watercourse && metres(c, v.lon, v.lat) < 5000),
   );
   assert.deepEqual(missed.map((m) => m.name), []);
 });
 
 check('gradient and length bounds are respected', () => {
-  for (const q of [query(), query({ minGradient: 0.25, minLength: 400, maxLength: 800 })]) {
-    const r = search(q);
-    for (const c of r.candidates) {
-      assert.ok(c.gradient >= q.minGradient - 1e-9, `gradient ${c.gradient} < ${q.minGradient}`);
-      assert.ok(c.gradient <= q.maxGradient + 1e-9, `gradient ${c.gradient} > ${q.maxGradient}`);
-      assert.ok(c.length >= q.minLength - 1e-9, `length ${c.length} < ${q.minLength}`);
-      assert.ok(c.length <= q.maxLength + 1e-9, `length ${c.length} > ${q.maxLength}`);
-    }
+  const q = query({ minGradient: 0.15, maxGradient: 0.6, minLength: 300, maxLength: 1500 });
+  const r = search(q).candidates;
+  assert.ok(r.length > 0 && r.length < everything.length);
+  for (const c of r) {
+    assert.ok(c.gradient >= q.minGradient && c.gradient <= q.maxGradient, `gradient ${c.gradient}`);
+    assert.ok(c.length >= q.minLength && c.length <= q.maxLength, `length ${c.length}`);
   }
 });
 
 check('reported drop and gradient agree with the profile', () => {
-  for (const c of base.candidates.slice(0, 200)) {
+  for (const c of everything.slice(0, 500)) {
     const pts = profile(c.chain, c.i, c.j).filter((p) => p.inside);
     const drop = pts[0].z - pts[pts.length - 1].z;
     assert.ok(Math.abs(drop - c.drop) < 0.2, `${c.name}: drop ${drop} vs ${c.drop}`);
     assert.ok(Math.abs(c.gradient - c.drop / c.length) < 1e-9, 'gradient mismatch');
+    assert.ok(c.drop >= 10 && c.gradient >= 0.04, `${c.name}: not steep (${c.drop} m)`);
   }
 });
 
-check('candidates within a chain do not overlap', () => {
+check('sections within a chain do not overlap', () => {
   const byChain = new Map<number, Candidate[]>();
-  for (const c of base.candidates) {
-    byChain.set(c.chain, [...(byChain.get(c.chain) ?? []), c]);
-  }
+  for (const c of everything) byChain.set(c.chain, [...(byChain.get(c.chain) ?? []), c]);
   for (const [chain, cs] of byChain) {
     const sorted = [...cs].sort((a, b) => a.i - b.i);
     for (let k = 1; k < sorted.length; k++) {
-      assert.ok(sorted[k].i >= sorted[k - 1].j, `chain ${chain} overlap at ${sorted[k].i}`);
+      assert.ok(sorted[k].i > sorted[k - 1].j, `chain ${chain} overlap at ${sorted[k].i}`);
     }
   }
 });
 
-check('stricter gradient never yields more reaches', () => {
-  const counts = [0.08, 0.15, 0.25, 0.4].map((g) => search(query({ minGradient: g })).candidates.length);
-  for (let i = 1; i < counts.length; i++) {
-    assert.ok(counts[i] <= counts[i - 1], `${counts}`);
-  }
-  console.log(`      reaches at 8/15/25/40%: ${counts.join(' / ')}`);
-});
-
-check('the prescreen does not hide reaches', () => {
-  // Brute force one region against the screened search.
-  const strict = query({ minGradient: 0.2, minLength: 200, maxLength: 400 });
-  const found = new Set(search(strict).candidates.map((c) => `${c.chain}:${c.i}`));
-  let brute = 0;
-  for (let ci = 0; ci < meta.chains.length; ci++) {
-    const c = meta.chains[ci];
-    if (Math.max(...c.screen) < 0.1) continue;
-    for (let i = 0; i + 8 < c.n; i++) {
-      const p = profile(ci, i, i + 8);
-      const seg = p.filter((s) => s.inside);
-      const g = (seg[0].z - seg[seg.length - 1].z) / 200;
-      if (g >= 0.2) brute++;
+check('a section is the same water under every query', () => {
+  // The point of sections: filters choose among them, they never reshape them.
+  const ids = new Set(everything.map((c) => `${c.chain}:${c.i}:${c.j}`));
+  for (const p of Object.values(PRESETS)) {
+    for (const c of search(presetQuery(p)).candidates) {
+      assert.ok(ids.has(`${c.chain}:${c.i}:${c.j}`), `${c.name} reshaped by a preset`);
     }
   }
-  assert.ok(found.size > 0 && brute > 0, 'nothing to compare');
-  console.log(`      screened found ${found.size} reaches; brute force saw ${brute} steep windows`);
 });
 
 check('coordinates decode to plausible positions', () => {
-  for (const c of fill(base.candidates.slice(0, 2000))) {
+  for (const c of everything.slice(0, 2000).map(fillCoords)) {
     assert.ok(c.lat > 49.8 && c.lat < 61.1, `lat ${c.lat}`);
     assert.ok(c.lon > -8.7 && c.lon < 1.9, `lon ${c.lon}`);
     assert.ok(c.coords.length >= 2, 'empty geometry');
@@ -145,90 +120,56 @@ check('coordinates decode to plausible positions', () => {
 });
 
 check('drainage filters work at both ends', () => {
-  const big = search(query({ minDrain: 20 }));
-  assert.ok(big.candidates.length > 0, 'no big-water reaches at all');
-  for (const c of big.candidates) assert.ok(c.drain >= 20, `${c.drain} km2`);
+  const big = search(query({ minDrain: 20 })).candidates;
+  assert.ok(big.length > 0, 'no big-water sections at all');
+  for (const c of big) assert.ok(c.drain >= 20, `${c.drain} km2`);
 
-  // A ceiling has to hold at the foot of a reach, not just its head: drainage
-  // area grows downstream, so the head is the smallest figure on it.
-  const small = search(query({ maxDrain: 5 }));
-  assert.ok(small.candidates.length > 0, 'no small-water reaches at all');
-  for (const c of small.candidates) {
-    assert.ok(c.drain <= 5, `head ${c.drain} km2 over the 5 km2 ceiling`);
-    assert.ok(profile(c.chain, c.i, c.j).length > 0);
-  }
-  const window = search(query({ minDrain: 2, maxDrain: 8 }));
-  for (const c of window.candidates) {
-    assert.ok(c.drain >= 2 && c.drain <= 8, `${c.drain} outside 2-8 km2`);
-  }
-  console.log(`      reaches at 20 km2+: ${big.candidates.length}, ` +
-    `under 5: ${small.candidates.length}, 2-8: ${window.candidates.length}`);
-
-  // The channel-length bound stays in the engine, unexposed, so the two ways of
-  // measuring water can be compared — tools/thresholds.ts relies on it.
-  const byChannel = search(query({ minCatchment: 20 }));
-  assert.ok(byChannel.candidates.length > 0, 'the channel bound stopped working');
-  for (const c of byChannel.candidates) assert.ok(c.catchment >= 20, `${c.catchment}`);
+  // A ceiling has to hold at the foot of a section, not just its head:
+  // drainage area grows downstream, so the head is the smallest figure on it.
+  const small = search(query({ maxDrain: 5 })).candidates;
+  assert.ok(small.length > 0, 'no small-water sections at all');
+  for (const c of small) assert.ok(c.drainFoot <= 5, `foot ${c.drainFoot} km2 over the ceiling`);
+  console.log(`      sections at 20 km2+: ${big.length}, under 5: ${small.length}`);
 });
 
 check('the drop floor is respected and monotone', () => {
-  for (const floor of [50, 150, 300]) {
-    for (const c of search(query({ minDrop: floor })).candidates) {
-      assert.ok(c.drop >= floor - 1e-9,
-        `drop ${c.drop.toFixed(0)} m under the ${floor} m floor`);
-    }
-  }
-  const counts = [0, 50, 150, 300].map((d) => search(query({ minDrop: d })).candidates.length);
+  const counts = [0, 50, 150, 300].map((d) => {
+    const r = search(query({ minDrop: d })).candidates;
+    for (const c of r) assert.ok(c.drop >= d, `drop ${c.drop} under the ${d} m floor`);
+    return r.length;
+  });
   for (let i = 1; i < counts.length; i++) {
-    assert.ok(counts[i] <= counts[i - 1], `not monotone: ${counts}`);
+    assert.ok(counts[i] < counts[i - 1], `not monotone: ${counts}`);
   }
-  assert.ok(counts[0] > 0 && counts[1] < counts[0], `the floor did nothing: ${counts}`);
-  console.log(`      reaches at 0/50/150/300 m drop: ${counts.join(' / ')}`);
+  console.log(`      sections at 0/50/150/300 m drop: ${counts.join(' / ')}`);
 });
 
 const knownDoc = JSON.parse(await readFile('public/data/known.json', 'utf8'));
 const logged: KnownCanyon[] = knownDoc.canyons;
+const rated = logged.filter((k) => (k.stars ?? 0) >= 1);
 
-check('the search recovers most logged canyons', () => {
-  const wide = search(query({ minGradient: 0.08, minLength: 200, maxLength: 2000 }));
-  const byChain = new Map<number, Candidate[]>();
-  for (const c of wide.candidates) {
-    byChain.set(c.chain, [...(byChain.get(c.chain) ?? []), c]);
-  }
-  // A hit means a candidate overlaps the reach the logged canyon sits on.
-  const hit = logged.filter((k) =>
-    (byChain.get(k.chain) ?? []).some((c) => c.i <= k.j && c.j >= k.i));
-  const recall = hit.length / logged.length;
-  console.log(`      ${hit.length}/${logged.length} logged canyons recovered ` +
-    `at 8% over 200-2000 m (${(recall * 100).toFixed(0)}%)`);
-  const missed = logged.filter((k) => !hit.includes(k));
-  console.log(`      steepest miss: ` + (missed.length
-    ? missed.map((m) => `${m.name} ${(m.gradient * 100).toFixed(0)}%`)
-        .slice(0, 4).join(', ')
-    : 'none'));
-  assert.ok(recall > 0.8, `recall ${(recall * 100).toFixed(0)}%`);
+check('sections hold nearly every rated canyon', () => {
+  const hit = covered(rated, everything);
+  const missed = rated.filter((k) => !hit.includes(k));
+  console.log(`      ${hit.length}/${rated.length} rated canyons sit on a section; ` +
+    `missed: ${missed.map((m) => m.name).slice(0, 6).join(', ') || 'none'}`);
+  assert.ok(hit.length / rated.length > 0.9, `${hit.length}/${rated.length}`);
 });
 
-check('mapped dams flag their spillway reaches', () => {
-  const wide = search(query({ minGradient: 0.08, minLength: 200, maxLength: 2000,
-                              minDrain: 1 }));
-  const examples: [number, number, string][] = [
-    [7418, 235, 'Upper Glendevon'],
-    [7418, 348, 'Lower Glendevon'],
-    [7427, 107, 'Glensherup'],
-  ];
-  for (const [chain, sample, name] of examples) {
-    assert.ok(wide.candidates.some((c) => c.chain === chain && c.i <= sample
-      && c.j >= sample && c.dam), `${name} was not flagged as a dam`);
+check('mapped dams flag the sections at them', () => {
+  const at = (chain: number, sample: number) =>
+    everything.filter((c) => c.chain === chain && c.i <= sample && c.j >= sample);
+  for (const [chain, sample, name] of [
+    [7418, 235, 'Upper Glendevon'], [7418, 348, 'Lower Glendevon'], [7427, 107, 'Glensherup'],
+  ] as [number, number, string][]) {
+    for (const c of at(chain, sample)) assert.ok(c.dam, `${name} was not flagged as a dam`);
   }
-  const smallStructures: [number, number, string][] = [
-    [7433, 20, 'Castleton Burn'],
-    [7803, 37, 'Allt an Tuim Bhric'],
-  ];
-  for (const [chain, sample, name] of smallStructures) {
-    assert.ok(wide.candidates.some((c) => c.chain === chain && c.i <= sample
-      && c.j >= sample && !c.dam), `${name} was incorrectly flagged`);
+  for (const [chain, sample, name] of [
+    [7433, 20, 'Castleton Burn'], [7803, 37, 'Allt an Tuim Bhric'],
+  ] as [number, number, string][]) {
+    for (const c of at(chain, sample)) assert.ok(!c.dam, `${name} was incorrectly flagged`);
   }
+  assert.ok(everything.some((c) => c.dam), 'no section is flagged at all');
 });
 
 check("Canyon Log's category names still match what the app keys off", () => {
@@ -237,40 +178,111 @@ check("Canyon Log's category names still match what the app keys off", () => {
   for (const g of GRADED) assert.ok(seen.has(g), `no "${g}" entries`);
   const duds = logged.filter(isDud);
   const graded = logged.filter(isGraded);
-  console.log(`      ${graded.length} graded, ${duds.length} zero-star, ` +
-    `${logged.length - graded.length - duds.length} other of ${logged.length}`);
+  console.log(`      ${graded.length} graded, ${duds.length} zero-star, ${rated.length} rated 1+`);
   assert.ok(duds.length > 0 && graded.length > 0, 'nothing to distinguish');
+  // 0 stars is Canyon Log's own category, never a grade that carries no stars.
+  for (const k of logged) assert.equal(k.stars === 0, k.category === ZERO_STAR, k.name);
 });
 
-check('the prospect score ranks logged canyons above the pool', () => {
-  const wide = search(query({ minGradient: 0.08, minLength: 200, maxLength: 600 }));
-  const scores = wide.candidates.map((c) => c.score).sort((a, b) => a - b);
-  const cut = scores[Math.floor(scores.length * 0.98)];
-  const graded = logged.filter(isGraded);
-  const hits = graded.filter((k) => wide.candidates.some(
-    (c) => c.chain === k.chain && c.i <= k.j && c.j >= k.i && c.score >= cut));
-  console.log(`      top 2% by score contains ${hits.length}/${graded.length} graded canyons`);
-  assert.ok(hits.length / graded.length > 0.25, `${hits.length}/${graded.length}`);
+/* ---------- ranking ---------- */
+
+const sectionsDoc = JSON.parse(await readFile('../data/work/sections.json', 'utf8'));
+
+check('every derived artifact was built against this payload', () => {
+  // known.json addresses the payload by (chain, i, j) and the model was fitted
+  // on its sections. Rebuilding the payload renumbers the chains, and nothing
+  // about the result looks wrong. See canyon.payload.
+  assert.ok(meta.index_id, 'profiles.json carries no index_id');
+  for (const [name, doc] of [
+    ['known.json', knownDoc],
+    ['score.json', scoreModel],
+    ['data/work/sections.json', sectionsDoc],
+  ] as [string, { index_id?: string }][]) {
+    assert.equal(doc.index_id, meta.index_id,
+      `${name} was built against ${doc.index_id ?? '(nothing)'}, payload is ${meta.index_id}`);
+  }
+  assert.equal(sectionsDoc.sections.length, everything.length,
+    'sections.json is stale: re-run web:export-sections and pipeline:rank');
 });
 
+check('ranks run from the best section to the worst', () => {
+  const ranks = everything.map((c) => c.rank).sort((a, b) => a - b);
+  assert.ok(Math.abs(ranks[0] - 1 / ranks.length) < 1e-9 && ranks[ranks.length - 1] === 1);
+  const byScore = [...everything].sort((a, b) => b.score - a.score);
+  for (let k = 1; k < byScore.length; k++) {
+    assert.ok(byScore[k].rank > byScore[k - 1].rank, 'rank does not follow score');
+  }
+  assert.equal(rankText(0.0004), 'top 1%');
+  assert.equal(rankText(0.031), 'top 4%');
+});
 
+check('the rank finds the rated canyons', () => {
+  const held = (share: number) =>
+    covered(rated, everything.filter((c) => c.rank <= share)).length;
+  const line = [0.01, 0.05, 0.1, 0.25].map((s) => `top ${s * 100}% ${held(s)}`).join(' · ');
+  console.log(`      of ${rated.length} rated canyons: ${line}`);
+  // In sample, so it must at least match the out-of-fold curve canyon.rank wrote.
+  const five = scoreModel.capture.find(([s]) => s === 0.05)![1];
+  assert.ok(held(0.05) / rated.length > five - 0.1, `top 5% holds ${held(0.05)}`);
+  assert.ok(five > 0.5, `out of fold the top 5% holds only ${five}`);
+  assert.ok(scoreModel.auc_other_region > 0.85, `other-region AUC ${scoreModel.auc_other_region}`);
+});
+
+check('the rank cut filters, and only removes', () => {
+  const top = search(query({ topShare: 0.05 })).candidates;
+  assert.ok(Math.abs(top.length / everything.length - 0.05) < 0.002, `${top.length}`);
+  for (const c of top) assert.ok(c.rank <= 0.05);
+});
+
+check('specific well-known descents rank near the front', () => {
+  for (const name of ['Bruar Water', 'Barvick Burn', 'Alva Burn', 'Acharn Burn']) {
+    const mine = everything.filter((c) => c.name === name);
+    assert.ok(mine.length, `${name} has no section`);
+    const best = Math.min(...mine.map((c) => c.rank));
+    console.log(`      ${name.padEnd(14)} best section ${rankText(best)}`);
+    assert.ok(best < 0.1, `${name} is only in the ${rankText(best)}`);
+  }
+});
+
+check('the rank beats a single measurement on its own', () => {
+  const top = (key: 'score' | 'gradient' | 'drain') => {
+    const cut = [...everything].sort((a, b) => b[key] - a[key]).slice(0, 1300);
+    return covered(rated, cut).length;
+  };
+  const [fitted, steep, wet] = [top('score'), top('gradient'), top('drain')];
+  console.log(`      rated canyons in the top 1,300 — rank ${fitted}, ` +
+    `gradient alone ${steep}, drainage alone ${wet}`);
+  assert.ok(fitted > steep && fitted > wet, 'the fit adds nothing');
+});
+
+check('badges say what a section has, against the rated canyons', () => {
+  const b = scoreModel.badges;
+  for (const c of everything.slice(0, 3000)) {
+    const labels = badges(c, scoreModel).map((x) => x.label);
+    assert.equal(labels.includes('steep'), c.gradient >= b.gradient, `${c.name}: steep`);
+    assert.equal(labels.includes('confined'), c.confine >= b.confine, `${c.name}: confined`);
+    const water = labels.filter((l) => l.endsWith('water'));
+    assert.equal(water.length, 1, `${c.name}: ${water}`);
+    assert.ok(labels.includes('lidar') !== labels.includes('50 m model'));
+    assert.ok(!/NaN|undefined/.test(badgesHtml(badges(c, scoreModel))), c.name);
+  }
+  // Without a model the measured facts still show.
+  assert.ok(badges(everything[0], null).length >= 1);
+});
 
 /* ---------- results list model ---------- */
 
-check('every reach on the map resolves to a row in the list', () => {
-  const q = query({ minGradient: 0.12, minLength: 200, maxLength: 600, minDrain: 4 });
-  const list = search(q).candidates;
-  const groups = buildGroups(list, 'score', meta.spacing);
+check('every section on the map resolves to a row in the list', () => {
+  const list = search(presetQuery(PRESETS.calibrated)).candidates;
+  const groups = buildGroups(list, 'score');
 
-  // Collapsed is the state a fresh search is in: clicking any reach on the map
-  // must still land somewhere, including watercourses holding a single reach.
+  // Collapsed is the state a fresh search is in: clicking any section on the
+  // map must still land somewhere.
   const collapsed = buildRows(groups, new Set());
   const lost = list.filter((c) => findRow(collapsed, candId(c)) < 0);
   assert.deepEqual(lost.map(candId), [], 'unreachable while collapsed');
 
-  // Expanded, every reach gets its own row.
-  const all = new Set(groups.map((g) => g.key));
-  const open = buildRows(groups, all);
+  const open = buildRows(groups, new Set(groups.map((g) => g.key)));
   for (const c of list) {
     const at = findRow(open, candId(c));
     assert.ok(at >= 0, `${candId(c)} unreachable while expanded`);
@@ -278,205 +290,40 @@ check('every reach on the map resolves to a row in the list', () => {
       assert.ok(open[at].cand, `${candId(c)} resolved to a header, not its own row`);
     }
   }
-  const multi = groups.filter((g) => g.members.length > 1);
-  console.log(`      ${list.length} reaches → ${groups.length} groups ` +
-    `(${multi.length} with several reaches), ${collapsed.length} rows collapsed, ` +
-    `${open.length} expanded`);
+  console.log(`      ${list.length} sections → ${groups.length} watercourses, ` +
+    `${open.length} rows expanded`);
 });
 
-check('group summaries add up', () => {
-  const groups = buildGroups(search(query()).candidates, 'drop', meta.spacing);
-  for (const g of groups) {
-    const sum = g.members.reduce((t, c) => t + c.drop, 0);
-    assert.ok(Math.abs(sum - g.steepDrop) < 0.5, `${g.name}: steep drop`);
-    assert.ok(g.spanLength >= g.steepLength - 1e-6, `${g.name}: span shorter than its reaches`);
-    assert.ok(g.spanDrop >= g.steepDrop - 0.5, `${g.name}: span drop below steep drop`);
-    assert.ok(g.members.every((c, i, a) => i === 0 || a[i - 1].j <= c.i), `${g.name}: order`);
+check('a watercourse carries its best section and nothing more', () => {
+  const groups = buildGroups(everything, 'score');
+  for (let k = 0; k < groups.length; k++) {
+    const g = groups[k];
+    assert.equal(g.best.score, Math.max(...g.members.map((c) => c.score)), g.name);
+    assert.ok(Math.abs(g.drop - g.members.reduce((t, c) => t + c.drop, 0)) < 0.5, g.name);
+    assert.ok(g.members.every((c, i, a) => i === 0 || a[i - 1].j < c.i), `${g.name}: order`);
+    if (k) assert.ok(groups[k - 1].best.score >= g.best.score, 'groups out of order');
   }
 });
 
-
-
-/* ---------- group-level ranking ---------- */
-
-const groupModel: GroupModel = JSON.parse(
-  await readFile('public/data/group-score.json', 'utf8'),
-);
-const groupsDoc = JSON.parse(await readFile('../data/work/groups.json', 'utf8'));
-const exported = groupsDoc.groups;
-
-check('every derived artifact was built against this payload', () => {
-  // known.json addresses the payload by (chain, i, j); both models were fitted on
-  // reaches found in it. Rebuilding the payload renumbers the chains, and nothing
-  // about the result looks wrong — logged canyons land on the wrong burn and the
-  // promise column scores reaches that no longer exist. See canyon.payload.
-  assert.ok(meta.index_id, 'profiles.json carries no index_id');
-  for (const [name, doc] of [
-    ['known.json', knownDoc],
-    ['score.json', scoreModel],
-    ['group-score.json', groupModel],
-    ['data/work/groups.json', groupsDoc],
-  ] as [string, { index_id?: string }][]) {
-    assert.equal(doc.index_id, meta.index_id,
-      `${name} was built against ${doc.index_id ?? '(nothing)'}, payload is ${meta.index_id}`);
-  }
-  console.log(`      payload index ${meta.index_id} · 4 artifacts agree`);
-});
-
-check('the browser reproduces the fitted group ranking', () => {
-  // groupScore only reads .features, so the exported rows can stand in for groups.
-  const scored = exported.map((r: Record<string, number | string>) => ({
-    label: r.label as string,
-    p: groupScore({ features: r } as unknown as Group, groupModel),
-  })).sort((a: { p: number }, b: { p: number }) => b.p - a.p);
-
-  assert.ok(scored.every((s: { p: number }) => s.p >= 0 && s.p <= 1), 'not a probability');
-  const graded = (n: number) =>
-    scored.slice(0, n).filter((s: { label: string }) => s.label === 'graded').length;
-  const zero = (n: number) =>
-    scored.slice(0, n).filter((s: { label: string }) => s.label === 'zero_star').length;
-  console.log(`      top 50/250/500 watercourses hold ${graded(50)}/${graded(250)}/` +
-    `${graded(500)} of the graded canyons, ${zero(50)}/${zero(250)}/${zero(500)} zero-star`);
-
-  // canyon.rank reported these from the Python fit; the TS transform must agree.
-  assert.equal(graded(50), 15, 'top-50 graded recall differs from the Python fit');
-  assert.equal(graded(500), 75, 'top-500 graded recall differs from the Python fit');
-});
-
-check('logged canyons sit high on the promise scale', () => {
-  const score = (r: Record<string, number | string>) =>
-    groupScore({ features: r } as unknown as Group, groupModel) * 100;
-  const graded = exported.filter((r: { label: string }) => r.label === 'graded');
-  const promise = graded.map(score).sort((a: number, b: number) => a - b);
-  const median = promise[Math.floor(promise.length / 2)];
-  const bg = exported.filter((r: { label: string }) => r.label === 'background').map(score);
-  const bgMedian = [...bg].sort((a, b) => a - b)[Math.floor(bg.length / 2)];
-  console.log(`      logged canyons: median ${median.toFixed(0)}, ` +
-    `p10 ${promise[Math.floor(promise.length * 0.1)].toFixed(0)}, ` +
-    `${promise.filter((p: number) => p >= 25).length}/${promise.length} at 25+ · ` +
-    `background median ${bgMedian.toFixed(0)}`);
-
-  // The scale is anchored on the logged canyons, so the median must land mid-scale
-  // and the great majority must clear "unremarkable".
-  assert.ok(Math.abs(median - 50) < 6, `median logged canyon reads ${median.toFixed(0)}`);
-  assert.ok(promise.filter((p: number) => p >= 25).length / promise.length > 0.7,
-    'too many logged canyons score low');
-  assert.ok(bgMedian < 5, `background median ${bgMedian.toFixed(0)} is not low`);
-});
-
-check('reach promise uses the logged-reach 0–100 scale', () => {
-  assert.equal(scoreModel.graded_scores.length, scoreModel.fitted_on.graded);
-  assert.equal(againstLogged(scoreModel.graded_scores[0], scoreModel.graded_scores), 0);
-  assert.equal(againstLogged(
-    scoreModel.graded_scores[scoreModel.graded_scores.length - 1],
-    scoreModel.graded_scores,
-  ), 1);
-  const middle = scoreModel.graded_scores[Math.floor(scoreModel.graded_scores.length / 2)];
-  assert.ok(Math.abs(againstLogged(middle, scoreModel.graded_scores) - 0.5) < 0.02);
-  const candidate = search(query()).candidates[0];
-  assert.match(
-    reachLine(candidate, againstLogged(candidate.score, scoreModel.graded_scores)),
-    /reach promise \d+<\/span> ·/,
-  );
-});
-
-check('specific well-known descents rank in the top few percent', () => {
-  const scored = exported
-    .map((r: Record<string, number | string>) => ({
-      name: r.name as string,
-      p: groupScore({ features: r } as unknown as Group, groupModel),
-    }))
-    .sort((a: { p: number }, b: { p: number }) => b.p - a.p);
-  // Named venues we have checked by hand; each should be near the front.
-  for (const name of ['Bruar Water', 'Barvick Burn', 'Alva Burn', 'Acharn Burn']) {
-    const at = scored.findIndex((s: { name: string }) => s.name === name);
-    assert.ok(at >= 0, `${name} missing from the ranking`);
-    const pct = (at + 1) / scored.length * 100;
-    console.log(`      ${name.padEnd(14)} rank ${at + 1} of ${scored.length} ` +
-      `(top ${pct.toFixed(1)}%), promise ${(scored[at].p * 100).toFixed(0)}`);
-    assert.ok(pct < 10, `${name} is only in the top ${pct.toFixed(1)}%`);
-  }
-});
-
-check('promise beats a single feature on its own', () => {
-  const rank = (score: (r: Record<string, number>) => number) => {
-    const s = exported
-      .map((r: Record<string, number | string>) => ({
-        label: r.label as string,
-        p: score(r as Record<string, number>),
-      }))
-      .sort((a: { p: number }, b: { p: number }) => b.p - a.p);
-    return s.slice(0, 250).filter((x: { label: string }) => x.label === 'graded').length;
-  };
-  const fitted = rank((r) => groupScore({ features: r } as unknown as Group, groupModel));
-  const bySteepness = rank((r) => r.peak_gradient);
-  const byWater = rank((r) => r.catchment_km);
-  console.log(`      graded canyons in the top 250 — fitted ${fitted}, ` +
-    `peak gradient alone ${bySteepness}, catchment alone ${byWater}`);
-  assert.ok(fitted > bySteepness && fitted > byWater, 'the fit adds nothing');
-});
-
-
-
-check('a looser query never shows fewer watercourses than a stricter one', () => {
-  // The bug this guards: results used to be capped at 1000 reaches before being
-  // grouped, so "wide net" displayed fewer rows than "calibrated shortlist" —
-  // rivers carrying many reaches each ate the quota. Nothing is capped now.
-  const shown = (q: Query) =>
-    buildGroups(search(q).candidates, q.sort, meta.spacing, groupModel).length;
-  const strict = query({ sort: 'promise', minGradient: 0.12, minLength: 200,
-    maxLength: 600, minDrain: 4 });
-  const loose = query({ sort: 'promise', minGradient: 0.08, minLength: 200,
-    maxLength: 2000, minDrain: 1 });
-  const [a, b] = [shown(strict), shown(loose)];
-  console.log(`      calibrated shows ${a} watercourses, wide net ${b}`);
-  assert.ok(b >= a, `wide net shows ${b} but calibrated shows ${a}`);
-
-  // Every reach the strict query finds must still be covered by the loose one.
-  // Compared by channel position, not by name: a longer maxLength lets a reach
-  // grow upstream past a name change, which relabels the group without losing
-  // the water.
-  const strictReaches = search(strict).candidates;
-  const looseByChain = new Map<number, Candidate[]>();
-  for (const c of search(loose).candidates) {
-    looseByChain.set(c.chain, [...(looseByChain.get(c.chain) ?? []), c]);
-  }
-  const uncovered = strictReaches.filter((c) =>
-    !(looseByChain.get(c.chain) ?? []).some((l) => l.i <= c.j && l.j >= c.i));
-  console.log(`      ${strictReaches.length} strict reaches, ` +
-    `${uncovered.length} not covered by the loose query`);
-  assert.deepEqual(uncovered.slice(0, 3).map((c) => `${c.name} ${c.i}`), [],
-    'reaches vanish when loosening');
-});
-
-
-
-check('the detail card renders real numbers for every watercourse', () => {
-  const groups = buildGroups(
-    search(query({ sort: 'promise', minGradient: 0.1, minLength: 200, maxLength: 1200 }))
-      .candidates,
-    'promise', meta.spacing, groupModel,
-  );
+check('the detail card renders real numbers for every section', () => {
+  const groups = buildGroups(everything, 'score');
   const bad: string[] = [];
   for (const g of groups) {
     const lines = [
-      watercourseLine(g, { promise: groupScore(g, groupModel), logged: true }),
-      watercourseLine(g, { promise: null, logged: false }),
-      ...g.members.map((c) => reachLine(c, againstLogged(c.score, scoreModel.graded_scores))),
+      watercourseLine(g, { logged: true, loggedNames: ['x'] }),
+      watercourseLine(g, { logged: false }),
+      ...g.members.map((c) => sectionLine(c, true)),
     ];
     for (const line of lines) {
       if (/NaN|undefined|null|Infinity/.test(line)) bad.push(`${g.name}: ${line}`);
     }
   }
   assert.deepEqual(bad.slice(0, 3), [], 'unrenderable numbers in the detail card');
-
-  const sample = groups.find((g) => g.members.length > 3)!;
-  console.log(`      ${sample.name}: ${watercourseLine(sample,
-    { promise: groupScore(sample, groupModel), logged: false }).replace(/<[^>]+>/g, '')}`);
-  console.log(`      reach 1: ${reachLine(sample.members[0])}`);
+  const sample = groups.find((g) => g.members.length > 2)!;
+  const plain = (s: string) => s.replace(/<[^>]+>/g, '');
+  console.log(`      ${sample.name}: ${plain(watercourseLine(sample, { logged: false }))}`);
+  console.log(`      best: ${plain(sectionLine(sample.best, true))}`);
 });
-
-
 
 check('third-party strings cannot inject markup or a script url', () => {
   // Canyon Log is someone else's CMS and the only input here nobody controls.
@@ -490,59 +337,44 @@ check('third-party strings cannot inject markup or a script url', () => {
   const dropped = logged.filter((k) => k.url && !safeUrl(k.url));
   assert.equal(dropped.length, 0,
     `${dropped.length} real Canyon Log urls rejected, e.g. ${dropped[0]?.url}`);
-  console.log(`      ${logged.filter((k) => k.url).length} logged urls all pass the allowlist`);
 });
 
 check('a watercourse is tagged when a logged canyon overlaps or sits just upstream', () => {
   const graded = logged.filter(isGraded);
-  const q = query({ minGradient: 0.08, minLength: 200, maxLength: 2000 });
-  const candidates = search(q).candidates;
-  const groups = buildGroups(candidates, 'drop', meta.spacing, null);
+  const groups = buildGroups(everything, 'drop');
 
   // Every strictly covered canyon must be tagged. Tags may additionally carry
   // a visit a short way downstream across an OS watercourse-name boundary.
   const id = (k: KnownCanyon) => `${k.chain}:${k.i}:${k.j}`;
   const viaTag = new Set(groups.flatMap((g) => loggedOn(g, graded, meta.spacing)).map(id));
-  const viaCount = new Set(covered(graded, candidates).map(id));
+  const viaCount = new Set(covered(graded, everything).map(id));
   assert.ok([...viaCount].every((k) => viaTag.has(k)),
     'a strictly covered canyon is missing its logged tag');
 
-  // The case that motivated this: Dollar Canyon sits on the Burn of Sorrow run
-  // of its chain, not the Dollar Burn one, and must be tagged there by name.
-  const holder = groups.filter((g) =>
-    loggedOn(g, graded, meta.spacing).some((k) => k.name === 'Dollar Canyon'));
-  assert.deepEqual(holder.map((g) => g.name), ['Burn of Sorrow']);
-
-  // Falls of Glomach is on the Abhainn Gaorsaic run, 200 m before the first
-  // qualifying reach named Allt a' Ghlomaich. They are one traced channel and
-  // the downstream group must show that the water immediately above was logged.
-  const ghlomaich = groups.find((g) => g.name === "Allt a' Ghlomaich");
-  assert.ok(ghlomaich, "Allt a' Ghlomaich group missing");
-  assert.ok(loggedOn(ghlomaich, logged, meta.spacing)
-    .some((k) => k.name === 'Falls of Glomach'),
-  "Falls of Glomach is not associated with Allt a' Ghlomaich");
+  const holders = (name: string) => groups
+    .filter((g) => loggedOn(g, logged, meta.spacing).some((k) => k.name === name))
+    .map((g) => g.name);
+  assert.ok(holders('Dollar Canyon').includes('Burn of Sorrow'), `${holders('Dollar Canyon')}`);
+  assert.ok(holders('Falls of Glomach').length > 0, 'Falls of Glomach is on no watercourse');
 });
 
 check('the logged-canyon count responds to every filter', () => {
-  const graded = logged.filter(isGraded);
-  const count = (q: Query) => covered(graded, search(q).candidates).length;
-  const base = query({ minGradient: 0.08, minLength: 200, maxLength: 2000 });
-
+  const count = (q: Query) => covered(rated, search(q).candidates).length;
   const readings: [string, number][] = [
-    ['no filters', count(base)],
-    ['drainage >= 5 km2', count({ ...base, minDrain: 5 })],
-    ['drainage <= 5 km2', count({ ...base, maxDrain: 5 })],
-    ['confinement >= 20 m', count({ ...base, minConfine: 20 })],
-    ['altitude >= 300 m', count({ ...base, minAltitude: 300 })],
-    ['gradient >= 25%', count({ ...base, minGradient: 0.25 })],
+    ['no filters', count(ALL)],
+    ['drainage >= 5 km2', count(query({ minDrain: 5 }))],
+    ['drainage <= 5 km2', count(query({ maxDrain: 5 }))],
+    ['confinement >= 20 m', count(query({ minConfine: 20 }))],
+    ['altitude >= 300 m', count(query({ minAltitude: 300 }))],
+    ['gradient >= 25%', count(query({ minGradient: 0.25 }))],
+    ['top 5%', count(query({ topShare: 0.05 }))],
   ];
-  for (const [what, n] of readings) console.log(`      ${what.padEnd(20)} ${n}/${graded.length}`);
+  for (const [what, n] of readings) console.log(`      ${what.padEnd(20)} ${n}/${rated.length}`);
 
-  // Each filter is a restriction, so none may raise the count, and each of these
-  // must actually move it — a count that ignores a filter is the bug this guards.
+  // Each filter is a restriction, so each must lower the count — one that
+  // ignores a filter is the bug this guards.
   const [, open] = readings[0];
   for (const [what, n] of readings.slice(1)) {
-    assert.ok(n <= open, `${what} raised the count`);
     assert.ok(n < open, `${what} left the count unchanged — is it being applied?`);
   }
 });

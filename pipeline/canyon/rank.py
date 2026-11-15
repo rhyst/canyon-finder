@@ -1,15 +1,17 @@
-"""Rank whole watercourses by how much they look like a canyon.
+"""Rank steep sections by how much they look like a rated canyon.
 
-The reach-level score in canyon.analyse answers "is this 300 m steep". This
-answers the question you actually ask when choosing where to drive: is this
-*watercourse* worth a day. It fits on group-level features exported from the
-app's own search (web/tools/export-groups.ts), so the model and the UI cannot
-drift apart.
+Fits on the sections exported from the app's own measuring code
+(web/tools/export-sections.ts), so the model and the UI cannot drift apart.
 
-Positives are groups holding a graded Canyon Log descent. Background is every
-other group. The 17 "0 Stars" groups are held out entirely and only used to
-report how well the ranking separates worthwhile from visited-and-rejected —
-they are too few to train on.
+Positives are sections holding a Canyon Log descent rated 1 star or more.
+Background is every section with nothing logged on it. Sections holding only a
+0-star or unrated entry are left out of the fit and reported on: nothing
+measured here separates a good canyon from a dull one, so the score is only
+asked where the canyons are.
+
+The app shows the score as a rank among all sections, and the capture curve
+written here says what a rank is worth: the share of rated canyons found in the
+top N% of sections, measured out of fold.
 """
 
 from __future__ import annotations
@@ -21,31 +23,47 @@ from pathlib import Path
 import numpy as np
 
 from . import payload
-from .analyse import auc, logistic
 
-# Candidate features, with the transform used before standardising.
+# Candidate features: fields of the app's Candidate, with the transform used
+# before standardising. Where the water term saturates is selected, not assumed.
 CANDIDATES: list[tuple[str, dict]] = [
-    ("peak_gradient", {}),
-    ("overall_gradient", {}),
-    ("steep_drop", {"log1p": True}),
-    ("steep_length", {"log1p": True}),
-    ("span_length", {"log1p": True}),
-    ("continuity", {}),
-    ("reaches", {"log1p": True}),
-    ("catchment_km", {"log1p": True, "cap": 50.0}),
-    # Where the water term saturates decides whether a big flat river outranks a
-    # gorge, so the cap is selected rather than assumed. Uncapped, or capped too
-    # high, the Clyde's 1,900 km² beats Bruar's 73 and the top of the list fills
-    # with major rivers carrying no gradient.
-    ("drain_km2 <=10", {"src": "drain_km2", "log1p": True, "cap": 10.0}),
-    ("drain_km2 <=20", {"src": "drain_km2", "log1p": True, "cap": 20.0}),
-    ("drain_km2 <=50", {"src": "drain_km2", "log1p": True, "cap": 50.0}),
-    ("drain_km2 <=200", {"src": "drain_km2", "log1p": True, "cap": 200.0}),
-    ("confine_median", {"cap": 60.0}),
-    ("confine_max", {"cap": 60.0}),
-    ("top_m", {"cap": 900.0}),
+    ("gradient", {}),
+    ("steepest", {}),
+    ("drop", {"log1p": True}),
+    ("length", {"log1p": True}),
+    ("catchment", {"log1p": True, "cap": 50.0}),
+    ("drain <=10", {"src": "drain", "log1p": True, "cap": 10.0}),
+    ("drain <=50", {"src": "drain", "log1p": True, "cap": 50.0}),
+    ("drain <=200", {"src": "drain", "log1p": True, "cap": 200.0}),
+    ("power", {"log1p": True}),
+    ("confine", {"cap": 60.0}),
+    ("confineMax", {"cap": 60.0}),
+    ("top", {"cap": 900.0}),
 ]
 FOLDS = 5
+GOOD = 1  # stars: 0 is "not worth it", anything rated above is a real canyon
+SHARES = (0.01, 0.02, 0.05, 0.10, 0.25, 0.50)
+SPLIT_LAT = 55.3  # roughly the border: Scotland against England and Wales
+
+
+def auc(pos: np.ndarray, neg: np.ndarray) -> float:
+    """Probability a random positive scores above a random negative."""
+    if not len(pos) or not len(neg):
+        return float("nan")
+    ranks = np.argsort(np.argsort(np.concatenate([pos, neg]))) + 1
+    r_pos = ranks[: len(pos)].sum()
+    return (r_pos - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg))
+
+
+def logistic(X: np.ndarray, y: np.ndarray, iters: int = 40) -> np.ndarray:
+    """Newton-Raphson logistic fit. X already has an intercept column."""
+    w = np.zeros(X.shape[1])
+    for _ in range(iters):
+        p = 1 / (1 + np.exp(-X @ w))
+        s = p * (1 - p) + 1e-9
+        H = X.T @ (X * s[:, None]) + 1e-6 * np.eye(X.shape[1])
+        w += np.linalg.solve(H, X.T @ (y - p))
+    return w
 
 
 def column(rows: list[dict], name: str, spec: dict) -> np.ndarray:
@@ -57,161 +75,159 @@ def column(rows: list[dict], name: str, spec: dict) -> np.ndarray:
     return v
 
 
-def fit(X: np.ndarray, y: np.ndarray) -> np.ndarray:
-    return logistic(np.column_stack([np.ones(len(X)), X]), y)
+def fit_apply(X: np.ndarray, y: np.ndarray, train: np.ndarray, test: np.ndarray) -> np.ndarray:
+    """Scores for `test` rows from a fit on `train` rows."""
+    mu, sd = X[train].mean(axis=0), X[train].std(axis=0) + 1e-9
+    w = logistic(np.column_stack([np.ones(train.sum()), (X[train] - mu) / sd]), y[train])
+    return np.column_stack([np.ones(test.sum()), (X[test] - mu) / sd]) @ w
 
 
-def apply(w: np.ndarray, X: np.ndarray) -> np.ndarray:
-    return np.column_stack([np.ones(len(X)), X]) @ w
-
-
-def cv_auc(X: np.ndarray, y: np.ndarray, seed: int = 0) -> float:
-    """Out-of-fold AUC. With fewer than 100 positives, in-sample AUC flatters badly."""
-    rng = np.random.default_rng(seed)
-    order = rng.permutation(len(y))
-    folds = np.array_split(order, FOLDS)
+def out_of_fold(X: np.ndarray, y: np.ndarray, seed: int = 0) -> np.ndarray:
+    """A score for every row from a model that never saw it. With this few
+    positives, in-sample figures flatter badly."""
+    fold = np.random.default_rng(seed).integers(0, FOLDS, len(y))
     scores = np.zeros(len(y))
-    for f in folds:
-        mask = np.ones(len(y), bool)
-        mask[f] = False
-        mu, sd = X[mask].mean(axis=0), X[mask].std(axis=0) + 1e-9
-        w = fit((X[mask] - mu) / sd, y[mask])
-        scores[f] = apply(w, (X[f] - mu) / sd)
-    return auc(scores[y == 1], scores[y == 0])
+    for f in range(FOLDS):
+        scores[fold == f] = fit_apply(X, y, fold != f, fold == f)
+    return scores
 
 
 def main() -> None:
     root = Path(__file__).resolve().parents[2]
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--groups", type=Path, default=root / "data" / "work" / "groups.json")
+    p.add_argument("--sections", type=Path, default=root / "data" / "work" / "sections.json")
     p.add_argument("--out", type=Path, default=root / "web" / "public" / "data")
     p.add_argument("--max-features", type=int, default=5)
     a = p.parse_args()
 
-    doc = json.loads(a.groups.read_text())
+    doc = json.loads(a.sections.read_text())
     meta = json.loads((a.out / "profiles.json").read_text())
-    payload.require_index(meta, doc, a.groups.name)
-    rows = doc["groups"]
-    label = np.array([r["label"] for r in rows])
-    train = np.isin(label, ["graded", "background"])
-    y = (label[train] == "graded").astype(float)
-    print(f"{len(rows):,} groups: {int(y.sum())} graded, {int((y == 0).sum()):,} background, "
-          f"{int((label == 'zero_star').sum())} zero-star held out")
+    payload.require_index(meta, doc, a.sections.name)
+    every = doc["sections"]
+    stars_all = np.array([-1 if r["stars"] is None else r["stars"] for r in every])
+    logged_all = np.array([bool(r["logged"]) for r in every])
+    use = (stars_all >= GOOD) | ~logged_all
+    rows = [r for r, u in zip(every, use) if u]
+    y = (stars_all[use] >= GOOD).astype(float)
+    print(f"{len(every):,} sections: {int(y.sum())} hold a canyon rated {GOOD}+ stars, "
+          f"{int((y == 0).sum()):,} background, {int((~use).sum())} with only a 0-star "
+          f"or unrated entry left out")
+
+    def cv(cols: np.ndarray) -> float:
+        s = out_of_fold(cols, y)
+        return auc(s[y == 1], s[y == 0])
 
     print(f"\nunivariate out-of-fold AUC ({FOLDS}-fold):")
-    single = {}
     for name, spec in CANDIDATES:
-        col = column(rows, name, spec)[train]
-        single[name] = cv_auc(col[:, None], y)
-        print(f"  {name:18} {single[name]:.3f}")
+        print(f"  {name:14} {cv(column(rows, name, spec)[:, None]):.3f}")
 
-    # Forward selection on out-of-fold AUC: with few positives, more features stop
-    # helping quickly, and adding them silently overfits.
+    # Forward selection on out-of-fold AUC: with few positives, more features
+    # stop helping quickly, and adding them silently overfits.
     chosen: list[tuple[str, dict]] = []
     best_auc = 0.5
     print("\nforward selection:")
     while len(chosen) < a.max_features:
-        options = []
         taken = {s.get("src", n) for n, s in chosen}
+        options = []
         for name, spec in CANDIDATES:
             if spec.get("src", name) in taken:
                 continue
             trial = chosen + [(name, spec)]
-            X = np.column_stack([column(rows, n, s)[train] for n, s in trial])
-            options.append((cv_auc(X, y), name, spec))
-        # AUC to three places, then the tightest cap. Averaged over all background
-        # groups, AUC cannot tell a cap of 50 km² from 200, but the looser one
-        # fills the top of the list with major rivers carrying no gradient — so
-        # under a tie, take the model that claims less.
-        options.sort(reverse=True, key=lambda o: (round(o[0], 3),
-                                                  -o[2].get("cap", 0.0)))
-        gain = options[0][0] - best_auc
-        if gain < 0.002:
-            print(f"  stop: best addition {options[0][1]} gains only {gain:+.3f}")
+            options.append((cv(np.column_stack([column(rows, n, s) for n, s in trial])),
+                            name, spec))
+        # Under a tie take the tighter cap: the looser one fills the top of the
+        # list with major rivers carrying no gradient.
+        options.sort(reverse=True, key=lambda o: (round(o[0], 3), -o[2].get("cap", 0.0)))
+        if options[0][0] - best_auc < 0.002:
+            print(f"  stop: best addition {options[0][1]} gains only "
+                  f"{options[0][0] - best_auc:+.3f}")
             break
         best_auc, name, spec = options[0]
         chosen.append((name, spec))
-        print(f"  + {name:18} out-of-fold AUC {best_auc:.3f}")
+        print(f"  + {name:14} out-of-fold AUC {best_auc:.3f}")
 
-    X_all = np.column_stack([column(rows, n, s) for n, s in chosen])
-    X = X_all[train]
+    X = np.column_stack([column(rows, n, s) for n, s in chosen])
     mu, sd = X.mean(axis=0), X.std(axis=0) + 1e-9
-    w = fit((X - mu) / sd, y)
-    prob = 1 / (1 + np.exp(-apply(w, (X_all - mu) / sd)))
-
+    w = logistic(np.column_stack([np.ones(len(X)), (X - mu) / sd]), y)
     print("\nfitted weights (standardised):")
     print(f"  intercept {w[0]:+.3f}")
     for (name, _), c in zip(chosen, w[1:]):
-        print(f"  {name:18} {c:+.3f}")
+        print(f"  {name:14} {c:+.3f}")
 
-    pos, bg = prob[train][y == 1], prob[train][y == 0]
-    zero = prob[label == "zero_star"]
-    a_bg, a_zero = auc(pos, bg), auc(pos, zero)
-    print(f"\nAUC vs background {a_bg:.3f} (out-of-fold {best_auc:.3f}) · "
-          f"vs zero-star {a_zero:.3f}")
-    for k in (50, 100, 250, 500):
-        cut = np.sort(prob)[::-1][k - 1]
-        print(f"  top {k:4} watercourses hold {int((pos >= cut).sum()):3} of "
-              f"{int(y.sum())} graded canyons "
-              f"and {int((zero >= cut).sum())} of {len(zero)} zero-star")
+    # The honest test for a prospecting tool: fit on one country, find the
+    # canyons in another.
+    north = np.array([r["lat"] >= SPLIT_LAT for r in rows])
+    across = []
+    print()
+    for train, label in ((north, "fit Scotland, test England+Wales"),
+                         (~north, "fit England+Wales, test Scotland")):
+        s = fit_apply(X, y, train, ~train)
+        across.append(auc(s[y[~train] == 1], s[y[~train] == 0]))
+        print(f"  {label}: AUC {across[-1]:.3f} on {int(y[~train].sum())} canyons")
 
-    # A calibrated probability is useless to read: with a 0.7% base rate even a
-    # fine canyon lands near 1%. Report where a watercourse sits against the
-    # logged canyons instead, so 50 means "as canyon-like as the median descent".
-    raw = apply(w, (X_all - mu) / sd)
-    graded_raw = np.sort(raw[train][y == 1])
-    pct = lambda v: np.interp(v, graded_raw, np.linspace(0, 100, len(graded_raw)))
-    print("\ngraded canyons on the against-logged scale (0-100 by construction):")
-    gp = pct(raw[train][y == 1])
-    for q in (5, 10, 25, 50, 75, 95):
-        print(f"  p{q:<3} {np.percentile(gp, q):5.1f}")
-    print(f"  zero-star median {np.median(pct(prob if False else raw[label == 'zero_star'])):.1f}"
-          f" · background median {np.median(pct(raw[train][y == 0])):.1f}")
+    oof = out_of_fold(X, y)
+    order = np.sort(oof)[::-1]
+    capture = []
+    print("\nwhat a rank is worth, out of fold:")
+    for share in SHARES:
+        cut = order[max(int(share * len(order)) - 1, 0)]
+        held = float((oof[y == 1] >= cut).mean())
+        capture.append([share, round(held, 3)])
+        print(f"  top {share * 100:4.0f}% of sections hold {held * 100:3.0f}% of rated canyons")
 
-    print("\nlowest-scoring graded canyons (where the ranking disagrees with people):")
-    lo = np.argsort(raw)
-    worst = [i for i in lo if label[i] == "graded"][:6]
-    for i in worst:
-        r = rows[i]
-        print(f"  {pct(raw[i]):5.1f}  {r['name'][:24]:25} peak {r['peak_gradient'] * 100:3.0f}% · "
-              f"{r['catchment_km']:5.1f} km up · conf {r['confine_max']:3.0f} m · "
-              f"{r['steep_drop']:4.0f} m drop · {', '.join(r['logged'])[:28]}")
+    Xa = np.column_stack([column(every, n, s) for n, s in chosen])
+    raw = np.column_stack([np.ones(len(Xa)), (Xa - mu) / sd]) @ w
+    rank = (np.argsort(np.argsort(-raw)) + 1) / len(raw)
+    print("\nmedian rank by rating: " + " · ".join(
+        f"{s}★ top {np.median(rank[stars_all == s]) * 100:.0f}%"
+        for s in range(5) if (stars_all == s).any())
+        + f" · unrated logged top {np.median(rank[logged_all & (stars_all < 0)]) * 100:.0f}%")
 
-    for probe in ("Barvick Burn", "Bruar Water", "Keltie Water"):
-        for i, r in enumerate(rows):
-            if r["name"] == probe:
-                print(f"  probe {probe:14} against-logged {pct(raw[i]):5.1f} · "
-                      f"rank {int((raw > raw[i]).sum()) + 1} of {len(rows)} · {r['label']}")
-                break
+    print("\nlowest-ranked rated canyons (where the ranking disagrees with people):")
+    low = [i for i in np.argsort(raw) if stars_all[i] >= GOOD][:6]
+    for i in low:
+        r = every[i]
+        print(f"  top {rank[i] * 100:3.0f}%  {r['name'][:22]:23} {r['gradient'] * 100:3.0f}% · "
+              f"{r['drop']:4.0f} m · {r['drain']:5.1f} km² · conf {r['confine']:3.0f} m · "
+              f"{', '.join(r['logged'])[:30]}")
 
-    print("\nmost promising watercourses with nothing logged on them:")
-    order = np.argsort(-raw)
+    print("\nbest-ranked sections with nothing logged on them:")
     shown = 0
-    for i in order:
-        r = rows[i]
-        if r["label"] != "background" or shown >= 15:
+    for i in np.argsort(-raw):
+        r = every[i]
+        if r["logged"] or shown >= 15:
             continue
         shown += 1
-        print(f"  {pct(raw[i]):5.1f}  {r['name'][:26]:27} "
-              f"{r['steep_drop']:4.0f} m in {r['steep_length'] / 1000:4.1f} km · "
-              f"peak {r['peak_gradient'] * 100:3.0f}% · {r['catchment_km']:5.1f} km up · "
-              f"conf {r['confine_median']:3.0f} m · {r['lat']:.4f},{r['lon']:.4f}")
+        print(f"  {r['name'][:26]:27} {r['drop']:4.0f} m in {r['length'] / 1000:4.2f} km · "
+              f"{r['gradient'] * 100:3.0f}% · {r['drain']:6.1f} km² · conf {r['confine']:3.0f} m · "
+              f"{r['lat']:.4f},{r['lon']:.4f}")
 
-    (a.out / "group-score.json").write_text(json.dumps({
+    pos = [r for r, s in zip(every, stars_all) if s >= GOOD]
+    med = lambda k: float(np.median([r[k] for r in pos]))
+    badges = {
+        "gradient": round(med("gradient"), 3),
+        "drop": round(med("drop")),
+        "confine": round(med("confine")),
+        "steepest": round(med("steepest"), 2),
+        "water": [round(float(v), 1) for v in
+                  np.percentile([r["drain"] for r in pos], [10, 90])],
+    }
+    print(f"\nbadge thresholds: {badges}")
+
+    (a.out / "score.json").write_text(json.dumps({
         "index_id": doc["index_id"],
         "transform": [{**{k: v for k, v in s.items() if k != "src"},
                        "name": s.get("src", n)} for n, s in chosen],
         "mean": mu.tolist(),
         "sd": sd.tolist(),
         "weights": w.tolist(),
-        "query": doc["query"],
-        "auc_vs_background": round(float(a_bg), 3),
+        "capture": capture,
+        "badges": badges,
         "auc_out_of_fold": round(float(best_auc), 3),
-        "auc_vs_zero_star": round(float(a_zero), 3),
-        "graded_scores": [round(float(v), 4) for v in graded_raw],
+        "auc_other_region": round(float(np.mean(across)), 3),
         "fitted_on": {"positive": int(y.sum()), "background": int((y == 0).sum())},
     }))
-    print(f"\nwrote {a.out / 'group-score.json'}")
+    print(f"\nwrote {a.out / 'score.json'}")
 
 
 if __name__ == "__main__":

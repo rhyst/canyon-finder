@@ -6,6 +6,8 @@ export interface ChainMeta {
   /** Inclusive sample runs within the mapped dam buffer. */
   dams?: [number, number][];
   screen: number[];
+  /** Steep sections as inclusive sample ranges; see canyon/sections.py. */
+  sections?: [number, number][];
   drain0?: number;
   top: number;
   bottom: number;
@@ -26,20 +28,28 @@ export interface Payload {
 }
 
 export type SortKey =
-  | 'promise' | 'score' | 'drop' | 'gradient' | 'steepest' | 'length'
-  | 'drain' | 'confine';
+  | 'score' | 'drop' | 'gradient' | 'steepest' | 'length' | 'drain' | 'confine';
 
-/** Logistic fit of graded canyons vs background, from canyon.analyse. */
+/** Logistic fit of sections holding a rated canyon vs the rest, from canyon.rank. */
 export interface ScoreModel {
+  /** Payload the fit was made against; see canyon/payload.py. */
+  index_id?: string;
+  /** Feature names are Candidate fields. */
   transform: { name: string; cap?: number; log1p?: boolean }[];
   mean: number[];
   sd: number[];
   weights: number[];
-  /** Fitted scores of logged reaches, ascending, for the visible 0–100 scale. */
-  graded_scores?: number[];
-  auc_vs_background: number;
-  auc_vs_zero_star: number;
-  fitted_on: { graded: number; background: number };
+  /** [top share of sections, share of rated canyons it holds], out of fold. */
+  capture: [number, number][];
+  /** A badge shows when a section reaches the rated canyons' median. */
+  badges: {
+    gradient: number; drop: number; confine: number; steepest: number;
+    /** Drainage area range, km², holding the middle 80% of rated canyons. */
+    water: [number, number];
+  };
+  auc_out_of_fold: number;
+  auc_other_region: number;
+  fitted_on: { positive: number; background: number };
 }
 
 export interface Query {
@@ -48,18 +58,16 @@ export interface Query {
   maxGradient: number;
   minLength: number;
   maxLength: number;
-  /** Drainage area floor, in km². This is what the UI exposes. */
+  /** Drainage area floor at the top of the section, in km². */
   minDrain: number;
-  /** Drainage area ceiling, in km². Infinity for no limit. */
+  /** Drainage area ceiling at its foot, in km². Infinity for no limit. */
   maxDrain: number;
-  /** Upstream channel length bounds, in km. Kept so the two ways of measuring
-   * how much water a reach carries stay comparable — see tools/thresholds.ts. */
-  minCatchment: number;
-  maxCatchment: number;
   minConfine: number;
   minAltitude: number;
-  /** Total drop floor for a reach, in metres. 0 for no limit. */
+  /** Total drop floor, in metres. 0 for no limit. */
   minDrop: number;
+  /** Keep only sections ranked in this top share of Great Britain; 1 for all. */
+  topShare?: number;
 }
 
 export interface Candidate {
@@ -70,12 +78,16 @@ export interface Candidate {
   length: number;
   drop: number;
   gradient: number;
-  steepest: number; // steepest 100m within the reach
+  steepest: number; // steepest 100m within the section
   catchment: number; // km of watercourse upstream of the top
-  drain: number; // km² draining to the top of the reach
+  drain: number; // km² draining to the top of the section
+  drainFoot: number; // and to its foot
   confine: number; // mean rise of the lower valley side 100 m out, metres
+  confineMax: number;
+  power: number; // gradient x drainage^0.45
   dam?: boolean; // overlaps a mapped dam or its immediate spillway
-  score: number; // raw reach-model score; higher ranks more canyon-like
+  score: number; // raw model score; higher is more canyon-like
+  rank: number; // share of all sections scoring at least this well, 0-1
   top: number;
   bottom: number;
   dem: string;

@@ -30,7 +30,7 @@ const check = (name: string, fn: () => void) => {
   }
 };
 
-const put = (doc: unknown) => store.set('canyon-finder/v1', JSON.stringify(doc));
+const put = (doc: unknown) => store.set('canyon-finder/v2', JSON.stringify(doc));
 
 check('an empty store gives an empty state', () => {
   store.clear();
@@ -55,8 +55,8 @@ check('corrupt or foreign contents are dropped, not thrown at the map', () => {
 });
 
 check('invalid filter values are dropped per entry, valid ones kept', () => {
-  put({ filters: { minGrad: 12, sort: 'promise', maxLen: '600' } });
-  assert.deepEqual(loadState().filters, { sort: 'promise', maxLen: '600' });
+  put({ filters: { minGrad: 12, sort: 'score', maxLen: '600' } });
+  assert.deepEqual(loadState().filters, { sort: 'score', maxLen: '600' });
 });
 
 check('a valid session round-trips', () => {
@@ -64,7 +64,7 @@ check('a valid session round-trips', () => {
     view: { center: [-4.36, 56.79], zoom: 12.5 },
     filters: { minGrad: '12', maxGrad: '100', minLen: '200', maxLen: '600',
                minDrain: '4', maxDrain: '200', minConf: '0', minAlt: '0',
-               sort: 'promise', viewOnly: 'false', hideLogged: 'true',
+               sort: 'score', viewOnly: 'false', hideLogged: 'true',
                showKnown: 'true', basemap: 'sat' },
     selected: { kind: 'reach', id: '1234:56' },
   });
@@ -72,7 +72,7 @@ check('a valid session round-trips', () => {
     view: { center: [-4.36, 56.79], zoom: 12.5 },
     filters: { minGrad: '12', maxGrad: '100', minLen: '200', maxLen: '600',
                minDrain: '4', maxDrain: '200', minConf: '0', minAlt: '0',
-               sort: 'promise', viewOnly: 'false', hideLogged: 'true',
+               sort: 'score', viewOnly: 'false', hideLogged: 'true',
                showKnown: 'true', basemap: 'sat' },
     selected: { kind: 'reach', id: '1234:56' },
   });
@@ -108,9 +108,9 @@ check('a save that throws (quota, private mode) is swallowed', () => {
   };
 });
 
-const calibrated = { minGrad: '12', maxGrad: '100', minLen: '200', maxLen: '600',
-                     minDrain: '4', maxDrain: '200', minConf: '0', minAlt: '0',
-                     minDrop: '50', minPromise: '0', sort: 'promise' };
+const calibrated = { minGrad: '5', maxGrad: '100', minLen: '50', maxLen: '5000',
+                     minDrain: '0', maxDrain: '200', minConf: '0', minAlt: '0',
+                     minDrop: '0', topShare: '10', sort: 'score' };
 
 check('preset matching recognises a measured slider set', () => {
   assert.equal(presetFor(calibrated), 'calibrated');

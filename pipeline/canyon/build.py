@@ -109,7 +109,7 @@ def build(raw: Path, out: Path, gpkg: Path, bbox: tuple[float, ...] = BBOX) -> N
             continue
 
         # Valley confinement: how far the lower bank rises 100 m out. Second-best
-        # discriminator after catchment (see canyon.analyse).
+        # discriminator after catchment (see canyon.rank).
         conf = confinement(dem.sample, pts[:, 0], pts[:, 1], z,
                            (CONFINE_RADIUS,))[CONFINE_RADIUS]
 

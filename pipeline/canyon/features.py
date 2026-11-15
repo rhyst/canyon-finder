@@ -46,37 +46,3 @@ def confinement(sample: Sampler, x: np.ndarray, y: np.ndarray, z: np.ndarray,
         out[r] = np.minimum(left - z, right - z)
     return out
 
-
-def reach_features(z: np.ndarray, up: np.ndarray, conf: dict[float, np.ndarray],
-                   i: int, j: int, spacing: float,
-                   drain: np.ndarray | None = None) -> dict[str, float]:
-    """Summarise the reach [i, j] of a chain."""
-    seg = z[i: j + 1]
-    length = (j - i) * spacing
-    drop = float(seg[0] - seg[-1])
-    steps = -np.diff(seg) / spacing  # per-sample gradient, downhill positive
-    sub = max(1, int(round(100 / spacing)))
-    win100 = ((seg[:-sub] - seg[sub:]) / (sub * spacing)) if len(seg) > sub else np.array([0.0])
-
-    feats = {
-        "gradient": drop / length if length else 0.0,
-        "length": length,
-        "drop": drop,
-        "steepest_100m": float(win100.max()) if win100.size else 0.0,
-        "steepest_step": float(steps.max()) if steps.size else 0.0,
-        # How much of the reach is doing the work: a canyon is a run of steep
-        # steps, a hillside burn is one steep step in a slack reach.
-        "steep_fraction": float((steps >= 0.15).mean()) if steps.size else 0.0,
-        "step_variation": float(steps.std()) if steps.size else 0.0,
-        "catchment_km": float(up[i]),
-        "top_m": float(seg[0]),
-        "bottom_m": float(seg[-1]),
-        # Both read at the head, where the water entering the reach is least.
-        "drain_km2": float(drain[i]) if drain is not None else 0.0,
-    }
-    # Window mean, matching search.ts. The browser filters and scores off a
-    # prefix-sum mean, which is what makes the confinement slider free, so the
-    # fit has to see the same statistic.
-    for r, vals in conf.items():
-        feats[f"confine_{int(r)}m"] = float(vals[i: j + 1].mean())
-    return feats

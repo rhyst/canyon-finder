@@ -9,11 +9,11 @@
  */
 import { PRESETS } from './presets.ts';
 
-const KEY = 'canyon-finder/v1';
+const KEY = 'canyon-finder/v2';
 
 /**
  * What was selected when the page went away, addressed the same way the data
- * is: a reach by (chain, i), a watercourse group by (chain, name), a logged
+ * is: a section by (chain, i), a watercourse group by (chain, name), a logged
  * canyon by (chain, i, j) — the addressing known.json uses.
  */
 export type SavedSelection =
