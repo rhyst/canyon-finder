@@ -198,6 +198,10 @@ map.on('load', () => {
     0.45, '#ffdc94',
   ];
   const ROUND = { 'line-cap': 'round' as const, 'line-join': 'round' as const };
+  // Lines take over from dots by zoom 11.5, then thin out again close in so the
+  // channel on the basemap shows through them.
+  const fade = (full: number, close: number) =>
+    ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, full, 14.5, full, 16.5, close] as never;
 
   // Selection sits *under* the data as a soft white glow, so a selected reach
   // keeps its gradient colour instead of being repainted.
@@ -210,7 +214,7 @@ map.on('load', () => {
       'line-color': '#ffffff',
       'line-width': ['interpolate', ['linear'], ['zoom'], 10, 8, 15, 20],
       'line-blur': 2,
-      'line-opacity': 0.85,
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 14.5, 0.85, 16.5, 0.25],
     },
   });
   map.addLayer({
@@ -221,7 +225,7 @@ map.on('load', () => {
     paint: {
       'line-color': '#12181d',
       'line-width': ['interpolate', ['linear'], ['zoom'], 11, 6, 15, 11],
-      'line-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 0.8],
+      'line-opacity': fade(0.8, 0),
     },
   });
   map.addLayer({
@@ -232,7 +236,7 @@ map.on('load', () => {
     paint: {
       'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 15, 6],
       'line-color': GRADIENT_RAMP as never,
-      'line-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 1],
+      'line-opacity': fade(1, 0.35),
     },
   });
   map.addLayer({
@@ -258,7 +262,7 @@ map.on('load', () => {
     paint: {
       'line-color': '#12181d',
       'line-width': ['interpolate', ['linear'], ['zoom'], 11, 7, 15, 12],
-      'line-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 0.8],
+      'line-opacity': fade(0.8, 0),
     },
   });
   map.addLayer({
@@ -270,7 +274,7 @@ map.on('load', () => {
       'line-color': ['case', ['get', 'dud'], '#8b97a3', '#5ec98a'],
       'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 15, 6],
       'line-dasharray': [2, 1.4],
-      'line-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 1],
+      'line-opacity': fade(1, 0.35),
     },
   });
   map.addLayer({
@@ -296,7 +300,7 @@ map.on('load', () => {
     paint: {
       'line-color': '#4cc4ff',
       'line-width': ['interpolate', ['linear'], ['zoom'], 11, 5, 15, 8],
-      'line-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 1],
+      'line-opacity': fade(1, 0.35),
     },
   });
   map.addLayer({
