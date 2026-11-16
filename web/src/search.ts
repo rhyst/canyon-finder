@@ -202,9 +202,12 @@ export function profile(chain: number, i: number, j: number) {
   const pad = Math.round(300 / meta.spacing);
   const from = Math.max(0, i - pad);
   const to = Math.min(c.n - 1, j + pad);
-  const pts: { d: number; z: number; inside: boolean }[] = [];
+  const pts: { d: number; z: number; inside: boolean; lon: number; lat: number }[] = [];
   for (let s = from; s <= to; s++) {
-    pts.push({ d: (s - i) * meta.spacing, z: z[c.o + s] / 10, inside: s >= i && s <= j });
+    pts.push({
+      d: (s - i) * meta.spacing, z: z[c.o + s] / 10, inside: s >= i && s <= j,
+      lon: lon[c.o + s], lat: lat[c.o + s],
+    });
   }
   return pts;
 }

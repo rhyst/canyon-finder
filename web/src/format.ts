@@ -3,7 +3,7 @@
  * the numbers can be tested — an undefined here renders as "NaN" to the user.
  */
 import type { Group } from './grouping.ts';
-import type { Candidate, ScoreModel } from './types.ts';
+import type { Candidate, ScoreModel, SortKey } from './types.ts';
 
 /**
  * Escape text bound for innerHTML. Canyon Log's names, grades and categories come
@@ -48,6 +48,20 @@ export function placeText(c: Candidate): string {
 /** Most of the drop in one 100 m stretch: a lone waterfall, not a descent. */
 export const SINGLE_DROP = 0.7;
 export const isSingleDrop = (c: Candidate) => c.single >= SINGLE_DROP;
+
+/** A row's headline: the measurement the list is sorted by, as [value, unit label]. */
+export function headline(c: Candidate, key: SortKey): [string, string] {
+  const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
+  switch (key) {
+    case 'drop': return [`${c.drop.toFixed(0)} m`, 'drop'];
+    case 'gradient': return [pct(c.gradient), 'average'];
+    case 'steepest': return [pct(c.steepest), 'steepest'];
+    case 'length': return [`${c.length.toFixed(0)} m`, 'long'];
+    case 'drain': return [fmtArea(c.drain), ''];
+    case 'confine': return [`${c.confine.toFixed(0)} m`, 'walls'];
+    default: return [placeText(c), ''];
+  }
+}
 
 export interface Badge { label: string; title: string; weak?: boolean }
 

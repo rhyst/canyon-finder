@@ -130,6 +130,7 @@ select {
 #results li[aria-selected="true"] { background: #223140; box-shadow: inset 3px 0 0 var(--accent); }
 #results .name { font-weight: 600; }
 #results .grad { display: flex; align-items: center; gap: 6px; }
+#results .grad small { color: var(--muted); font-weight: 400; font-size: 11px; }
 #results button.zoom {
   background: none; border: 0; padding: 4px; color: var(--muted); cursor: pointer;
   display: flex; margin: -4px -6px -4px 0;
@@ -180,7 +181,7 @@ button.link {
   border-bottom: 1px solid var(--line);
 }
 #detail .stats.context .tag.mini { vertical-align: 1px; }
-#detail #chart svg { display: block; width: 100%; height: 110px; }
+#detail #chart svg { display: block; width: 100%; height: 110px; touch-action: none; cursor: crosshair; }
 #detail .visits { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
 #detail .visit {
   border-top: 1px solid var(--line);

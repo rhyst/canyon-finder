@@ -22,7 +22,7 @@ import {
 } from './grouping';
 import { covered, isDud, isWorthwhile, reportedStats, visitReportsHtml, VISIT_SOURCE } from './canyonlog';
 import {
-  badges, badgesHtml, esc, fmtArea, isSingleDrop, placeText, rankText, safeUrl, sectionLine, watercourseLine,
+  badges, badgesHtml, esc, fmtArea, headline, isSingleDrop, placeText, rankText, safeUrl, sectionLine, watercourseLine,
 } from './format';
 import { loadState, presetFor, saveState, type SavedSelection } from './state';
 
@@ -132,7 +132,9 @@ let view: Candidate[] = []; // filtered + sorted
 let scored: { results: Candidate[] | null; key: string; sorted: Candidate[]; groups: Group[] } =
   { results: null, key: '', sorted: [], groups: [] };
 let rows: Row[] = []; // exactly what the list shows: group headers plus expanded sections
-let selected = -1; // index into `rows`
+let selected = -1; // index into `rows`, derived from `selection` whenever rows change
+let selection: SavedSelection | null = null;
+let pickedLines: [number, number][][] | null = null; // what the map highlights
 let stats = { scanned: 0, ms: 0, totalReaches: 0, truncated: false };
 let queryId = 0;
 let ready = false;
@@ -181,6 +183,7 @@ map.on('load', () => {
   map.addSource('reach-points', { type: 'geojson', data: empty as never });
   map.addSource('picked', { type: 'geojson', data: empty as never });
   map.addSource('picked-highlight', { type: 'geojson', data: empty as never });
+  map.addSource('profile-hover', { type: 'geojson', data: empty as never });
   map.addSource('known', { type: 'geojson', data: knownGeoJSON() as never });
   map.addSource('known-points', { type: 'geojson', data: knownPointGeoJSON() as never });
 
@@ -318,6 +321,18 @@ map.on('load', () => {
     },
   });
 
+  map.addLayer({
+    id: 'profile-hover',
+    type: 'circle',
+    source: 'profile-hover',
+    paint: {
+      'circle-radius': 6,
+      'circle-color': '#ffffff',
+      'circle-stroke-color': '#12181d',
+      'circle-stroke-width': 2,
+    },
+  });
+
   for (const id of ['reaches', 'reach-dots']) {
     map.on('click', id, (e: MapLayerMouseEvent) => {
       const hit = e.features?.[0]?.properties?.rid;
@@ -354,6 +369,7 @@ map.on('load', () => {
   // full renderResults — repainting the list would reset its scroll and
   // strand a just-restored selection back at the top.
   if (results.length) drawReaches(view);
+  if (pickedLines) drawPicked(pickedLines);
   tryRestoreSelection();
 });
 
@@ -501,6 +517,23 @@ function run() {
   worker.postMessage({ type: 'query', id: queryId, query: q });
 }
 
+const extents = new WeakMap<Candidate, [number, number, number, number]>();
+/** A section's bounding box: any part of it on screen counts as in view. */
+function extentOf(c: Candidate) {
+  let box = extents.get(c);
+  if (!box) {
+    box = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const [x, y] of c.coords) {
+      if (x < box[0]) box[0] = x;
+      if (y < box[1]) box[1] = y;
+      if (x > box[2]) box[2] = x;
+      if (y > box[3]) box[3] = y;
+    }
+    extents.set(c, box);
+  }
+  return box;
+}
+
 const expanded = new Set<string>();
 // The list is not capped; it renders this many rows at a time as you scroll.
 const CHUNK = 120;
@@ -549,7 +582,11 @@ function renderResults(keepPlace = false) {
   }
   if (el<HTMLInputElement>('viewOnly').checked) {
     const b = map.getBounds();
-    view = view.filter((c) => b.contains([c.lon, c.lat]));
+    const [w, south, e, n] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+    view = view.filter((c) => {
+      const [x0, y0, x1, y1] = extentOf(c);
+      return x0 <= e && x1 >= w && y0 <= n && y1 >= south;
+    });
     const shown = new Set(view.map(groupOf));
     groups = groups.filter((g) => shown.has(g.key));
   }
@@ -568,8 +605,14 @@ function renderResults(keepPlace = false) {
       `built against a different payload, re-run the pipeline</span>` : '');
 
   rows = buildRows(groups, expanded);
+  selected = rowOf(selection);
 
   paintRows(keepPlace);
+  // The list renders lazily, so a selection far down it has no row yet.
+  if (selected >= 0 && !keepPlace) {
+    ensureRendered(selected);
+    highlight(selected);
+  }
   drawReaches(view);
 }
 
@@ -617,18 +660,26 @@ function renderRow(row: Row, i: number): HTMLLIElement {
   li.setAttribute('aria-selected', String(i === selected));
   const { group, cand } = row;
 
+  const sort = el<HTMLSelectElement>('sort').value as SortKey;
+  // The headline already says the rank when the list is sorted by it.
   const rank = (c: Candidate) =>
-    (scoreModel ? `<span class="promise" title="${rankText(c.rank)} of all sections">` +
-      `${placeText(c)}</span> · ` : '');
+    (scoreModel && sort !== 'score'
+      ? `<span class="promise" title="${rankText(c.rank)} of all sections">` +
+        `${placeText(c)}</span> · ` : '');
+  const head = (c: Candidate) => {
+    const [value, unit] = headline(c, scoreModel ? sort : sort === 'score' ? 'drop' : sort);
+    return `<span class="grad">${value}${unit ? ` <small>${unit}</small>` : ''}${ZOOM_BUTTON}</span>`;
+  };
   const facts = (c: Candidate) =>
-    `${c.drop.toFixed(0)} m over ${c.length.toFixed(0)} m · ${fmtArea(c.drain)} draining`;
+    `${c.drop.toFixed(0)} m over ${c.length.toFixed(0)} m · ` +
+    `${c.drops} ${c.drops === 1 ? 'drop' : 'drops'} · ${fmtArea(c.drain)}`;
   if (cand) {
     li.className = 'reach';
     li.innerHTML = `
       <span class="name">${cand.drop.toFixed(0)} m over ${cand.length.toFixed(0)} m</span>
-      <span class="grad">${(cand.gradient * 100).toFixed(0)}%${ZOOM_BUTTON}</span>
-      <span class="meta">${rank(cand)}${fmtArea(cand.drain)} draining ·
-        top ${cand.top.toFixed(0)} m<br>${badgesHtml(badges(cand, scoreModel))}</span>`;
+      ${head(cand)}
+      <span class="meta">${rank(cand)}${cand.drops} ${cand.drops === 1 ? 'drop' : 'drops'} ·
+        ${fmtArea(cand.drain)} · from ${cand.top.toFixed(0)} m<br>${badgesHtml(badges(cand, scoreModel))}</span>`;
   } else {
     const n = group.members.length;
     li.className = 'group';
@@ -636,7 +687,7 @@ function renderRow(row: Row, i: number): HTMLLIElement {
     li.innerHTML = `
       <span class="name">${multi ? `<span class="chev">${expanded.has(group.key)
         ? '▾' : '▸'}</span> ` : ''}${group.name}</span>
-      <span class="grad">${(group.best.gradient * 100).toFixed(0)}%${ZOOM_BUTTON}</span>
+      ${head(group.best)}
       <span class="meta">${rank(group.best)}${loggedTag(group)}${multi
         ? `best of ${n} sections: ` : ''}${facts(group.best)}<br>${
         badgesHtml(badges(group.best, scoreModel))}</span>`;
@@ -736,14 +787,25 @@ function loggedTag(group: Group): string {
     ? '<span class="tag mini">logged</span> · ' : '';
 }
 
+/** The row showing a selection, or -1 when the filters leave it out. */
+function rowOf(sel: SavedSelection | null): number {
+  if (!sel) return -1;
+  if (sel.kind === 'reach') return findRow(rows, sel.id);
+  if (sel.kind === 'group') return rows.findIndex((r) => !r.cand && r.group.key === sel.id);
+  const k = known.find((e) => `${e.chain}:${e.i}:${e.j}` === sel.id);
+  return k ? rows.findIndex((r) => !r.cand
+    && loggedOn(r.group, [k], payload.spacing).length > 0) : -1;
+}
+
 function select(idx: number) {
   const row = rows[idx];
   if (!row) return;
   selected = idx;
   const { group, cand } = row;
-  saveState({ selected: cand
+  selection = cand
     ? { kind: 'reach', id: candId(cand) }
-    : { kind: 'group', id: group.key } });
+    : { kind: 'group', id: group.key };
+  saveState({ selected: selection });
 
   if (cand) {
     // Show the burn as a whole, then this section of it.
@@ -794,8 +856,8 @@ function highlight(idx: number) {
 function selectKnown(idx: number) {
   const k = known[idx];
   if (!k) return;
-  selected = -1;
-  saveState({ selected: { kind: 'known', id: `${k.chain}:${k.i}:${k.j}` } });
+  selection = { kind: 'known', id: `${k.chain}:${k.i}:${k.j}` };
+  saveState({ selected: selection });
   const r = reportedStats(k);
   const grade = k.grade ? `${esc(k.grade)} · ` : '';
   const dud = isDud(k);
@@ -827,11 +889,9 @@ function selectKnown(idx: number) {
   // whose reaches its window sits on, so the list shows where it belongs — and
   // clears cleanly when the current filters leave its water out. Best effort in
   // the same way the saved-selection restore is.
-  const at = rows.findIndex((r) => !r.cand
-    && loggedOn(r.group, [k], payload.spacing).length > 0);
-  selected = at;
-  if (at >= 0) ensureRendered(at);
-  highlight(at);
+  selected = rowOf(selection);
+  if (selected >= 0) ensureRendered(selected);
+  highlight(selected);
 }
 
 interface Detail {
@@ -846,34 +906,29 @@ interface Detail {
   extra: string;
 }
 
+/** Highlight the selection on the map; a no-op until the style has loaded. */
+function drawPicked(lines: [number, number][][]) {
+  const flat = lines.flat();
+  const line = {
+    type: 'Feature',
+    geometry: { type: 'MultiLineString', coordinates: lines },
+    properties: {},
+  };
+  (map.getSource('picked') as GeoJSONSource | undefined)?.setData(line as never);
+  (map.getSource('picked-highlight') as GeoJSONSource | undefined)?.setData({
+    type: 'FeatureCollection',
+    features: [line, {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: flat[Math.floor(flat.length / 2)] },
+      properties: {},
+    }],
+  } as never);
+}
+
 function showDetail(info: Detail) {
   const flat = info.coords.flat();
-  (map.getSource('picked') as GeoJSONSource | undefined)?.setData({
-    type: 'Feature',
-    geometry: { type: 'MultiLineString', coordinates: info.coords },
-    properties: {},
-  } as never);
-
-  const selectedHighlight = {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        geometry: { type: 'MultiLineString', coordinates: info.coords },
-        properties: {},
-      },
-      {
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: flat[Math.floor(flat.length / 2)],
-        },
-        properties: {},
-      },
-    ],
-  };
-  (map.getSource('picked-highlight') as GeoJSONSource | undefined)
-    ?.setData(selectedHighlight as never);
+  pickedLines = info.coords;
+  drawPicked(pickedLines);
 
   const [lon, lat] = flat[0];
   const d = el('detail');
@@ -900,8 +955,11 @@ function showDetail(info: Detail) {
   d.querySelector<HTMLButtonElement>('button.close')!.onclick = () => {
     d.hidden = true;
     selected = -1;
+    selection = null;
+    pickedLines = null;
     (map.getSource('picked') as GeoJSONSource | undefined)?.setData(empty as never);
     (map.getSource('picked-highlight') as GeoJSONSource | undefined)?.setData(empty as never);
+    (map.getSource('profile-hover') as GeoJSONSource | undefined)?.setData(empty as never);
     highlight(-1);
     saveState({ selected: null });
   };
@@ -912,7 +970,7 @@ function showDetail(info: Detail) {
   worker.postMessage({ type: 'profile', id: queryId, chain: info.chain, i: info.i, j: info.j });
 }
 
-function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
+function drawProfile(points: { d: number; z: number; inside: boolean; lon: number; lat: number }[]) {
   const host = document.getElementById('chart');
   if (!host || !points.length) return;
   const W = 356, H = 110, pad = { l: 30, r: 6, t: 8, b: 16 };
@@ -936,9 +994,41 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
     <text x="2" y="${sy(z1) + 4}" fill="#8fa3b5" font-size="9">${z1.toFixed(0)}m</text>
     <text x="2" y="${sy(z0) + 4}" fill="#8fa3b5" font-size="9">${z0.toFixed(0)}m</text>
     <text x="${sx(inside[0]?.d ?? 0)}" y="${H - 4}" fill="#8fa3b5" font-size="9">top</text>
-    <text x="${sx(inside[inside.length - 1]?.d ?? 0) - 18}" y="${H - 4}"
+    <text x="${sx(inside[inside.length - 1]?.d ?? 0)}" y="${H - 4}" text-anchor="end"
       fill="#8fa3b5" font-size="9">bottom</text>
+    <g class="probe" visibility="hidden">
+      <line y1="${pad.t}" y2="${H - pad.b}" stroke="#8fa3b5" stroke-width="1"/>
+      <circle r="3.5" fill="#ffffff" stroke="#12181d" stroke-width="1.5"/>
+      <text y="${pad.t + 6}" fill="#e6edf3" font-size="9"></text>
+    </g>
   </svg>`;
+
+  const svg = host.querySelector('svg')!;
+  const probe = svg.querySelector<SVGGElement>('.probe')!;
+  const hover = map.getSource('profile-hover') as GeoJSONSource | undefined;
+  svg.onpointermove = (e) => {
+    const box = svg.getBoundingClientRect();
+    const x = ((e.clientX - box.left) / box.width) * W;
+    const p = points.reduce((m, q) => (Math.abs(sx(q.d) - x) < Math.abs(sx(m.d) - x) ? q : m));
+    const px = sx(p.d);
+    probe.setAttribute('visibility', 'visible');
+    probe.querySelector('line')!.setAttribute('x1', String(px));
+    probe.querySelector('line')!.setAttribute('x2', String(px));
+    probe.querySelector('circle')!.setAttribute('cx', String(px));
+    probe.querySelector('circle')!.setAttribute('cy', String(sy(p.z)));
+    const label = probe.querySelector('text')!;
+    label.textContent = `${p.z.toFixed(0)} m`;
+    const left = px > W - 50;
+    label.setAttribute('x', String(px + (left ? -5 : 5)));
+    label.setAttribute('text-anchor', left ? 'end' : 'start');
+    hover?.setData({
+      type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: {},
+    } as never);
+  };
+  svg.onpointerleave = () => {
+    probe.setAttribute('visibility', 'hidden');
+    hover?.setData(empty as never);
+  };
 }
 
 /* ---------- session persistence ---------- */
