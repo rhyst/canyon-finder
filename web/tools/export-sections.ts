@@ -25,7 +25,7 @@ for (const k of logged) byChain.set(k.chain, [...(byChain.get(k.chain) ?? []), k
 
 const rows = search(ALL).candidates.map((c) => {
   const hits = (byChain.get(c.chain) ?? []).filter((k) => k.i <= c.j && k.j >= c.i);
-  const { coords: _coords, score: _score, rank: _rank, ...features } = c;
+  const { coords: _coords, score: _score, rank: _rank, place: _place, ...features } = c;
   return {
     ...features,
     logged: hits.map((k) => k.name),

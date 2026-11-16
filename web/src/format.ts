@@ -40,6 +40,15 @@ export function rankText(rank: number): string {
   return `top ${Math.max(1, Math.ceil(rank * 100))}%`;
 }
 
+/** Position among every section: percentages cannot tell the best few hundred apart. */
+export function placeText(c: Candidate): string {
+  return `#${c.place.toLocaleString()}`;
+}
+
+/** Most of the drop in one 100 m stretch: a lone waterfall, not a descent. */
+export const SINGLE_DROP = 0.7;
+export const isSingleDrop = (c: Candidate) => c.single >= SINGLE_DROP;
+
 export interface Badge { label: string; title: string; weak?: boolean }
 
 /** What makes a section a prospect, each shown only when it is as strong as
@@ -55,8 +64,10 @@ export function badges(c: Candidate, model: ScoreModel | null): Badge[] {
     if (c.drop >= b.drop) {
       out.push({ label: 'big drop', title: `${c.drop.toFixed(0)} m; half of rated canyons reach ${b.drop.toFixed(0)} m` });
     }
-    if (c.steepest >= b.steepest) {
-      out.push({ label: 'falls', title: `steepest 100 m is ${pct(c.steepest)}; half of rated canyons reach ${pct(b.steepest)}` });
+    if (isSingleDrop(c)) {
+      out.push({ label: 'single drop', title: `${pct(c.single)} of the drop is in one 100 m stretch: a lone waterfall, cliff or dam`, weak: true });
+    } else if (c.drops >= b.drops) {
+      out.push({ label: `${c.drops} drops`, title: `${c.drops} separate falls; half of rated canyons have ${b.drops} or more` });
     }
     if (c.confine >= b.confine) {
       out.push({ label: 'confined', title: `valley sides rise ${c.confine.toFixed(0)} m; half of rated canyons reach ${b.confine.toFixed(0)} m` });
@@ -99,9 +110,11 @@ export function watercourseLine(group: Group, ctx: Context): string {
 }
 
 export function sectionLine(c: Candidate, scored: boolean): string {
-  const p = scored ? `<span class="promise">${rankText(c.rank)}</span> · ` : '';
+  const p = scored ? `<span class="promise">${placeText(c)} of ` +
+    `${Math.round(c.place / c.rank).toLocaleString()}</span> (${rankText(c.rank)}) · ` : '';
   return `${p}${(c.gradient * 100).toFixed(1)}% over ${c.length.toFixed(0)} m · ` +
-    `${c.drop.toFixed(0)} m drop · steepest 100 m ${(c.steepest * 100).toFixed(0)}% · ` +
+    `${c.drop.toFixed(0)} m drop in ${c.drops} ${c.drops === 1 ? 'fall' : 'falls'} · ` +
+    `steepest 100 m ${(c.steepest * 100).toFixed(0)}% · ` +
     `${c.top.toFixed(0)}→${c.bottom.toFixed(0)} m · ${fmtArea(c.drain)} draining · ` +
     `confinement ${c.confine.toFixed(0)} m`;
 }

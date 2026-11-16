@@ -93,6 +93,10 @@ function nameAt(c: ChainMeta, i: number): string {
  *  is fixed water, so a query only filters this list. */
 let sections: Candidate[] = [];
 
+// A fall is a run of samples at this gradient or more, dropping this far.
+const FALL_GRADIENT = 0.2;
+const FALL_DROP = 8;
+
 function measure(ci: number, i: number, j: number): Candidate {
   const c = meta.chains[ci];
   const o = c.o;
@@ -101,10 +105,21 @@ function measure(ci: number, i: number, j: number): Candidate {
   const length = (j - i) * sp;
   const drop = (z[o + i] - z[o + j]) / 10;
   const gradient = drop / length;
-  let steepest = 0;
+  // A section shorter than the window drops its whole fall inside it.
+  let steepest = length < sub * sp ? drop / (sub * sp) : 0;
   for (let t = i; t + sub <= j; t++) {
     const g = (z[o + t] - z[o + t + sub]) / (sub * sp * 10);
     if (g > steepest) steepest = g;
+  }
+  let drops = 0;
+  let run = 0;
+  for (let t = i; t <= j; t++) {
+    const d = t < j ? (z[o + t] - z[o + t + 1]) / 10 : 0;
+    if (d / sp >= FALL_GRADIENT) run += d;
+    else {
+      if (run >= FALL_DROP) drops++;
+      run = 0;
+    }
   }
   let confSum = 0;
   let confineMax = 0;
@@ -120,7 +135,9 @@ function measure(ci: number, i: number, j: number): Candidate {
     length,
     drop,
     gradient,
-    steepest: steepest || gradient,
+    steepest,
+    drops,
+    single: Math.min(1, (steepest * 100) / Math.max(drop, 1e-9)),
     catchment: up[o + i] / 10,
     drain: drain[o + i],
     drainFoot: drain[o + j],
@@ -132,6 +149,7 @@ function measure(ci: number, i: number, j: number): Candidate {
     dam: c.dams?.some(([from, to]) => i <= to && j >= from) ?? false,
     score: 0,
     rank: 1,
+    place: 0,
     top: z[o + i] / 10,
     bottom: z[o + j] / 10,
     dem: c.dem ?? '50 m',
@@ -151,7 +169,7 @@ function buildSections() {
   // Rank is against every section in Great Britain, so it does not move with
   // the filters.
   const order = [...sections].sort((a, b) => b.score - a.score);
-  order.forEach((c, k) => { c.rank = (k + 1) / order.length; });
+  order.forEach((c, k) => { c.place = k + 1; c.rank = c.place / order.length; });
 }
 
 export function search(q: Query): {

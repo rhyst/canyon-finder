@@ -22,7 +22,7 @@ import {
 } from './grouping';
 import { covered, isDud, isWorthwhile, reportedStats, visitReportsHtml, VISIT_SOURCE } from './canyonlog';
 import {
-  badges, badgesHtml, esc, fmtArea, rankText, safeUrl, sectionLine, watercourseLine,
+  badges, badgesHtml, esc, fmtArea, isSingleDrop, placeText, rankText, safeUrl, sectionLine, watercourseLine,
 } from './format';
 import { loadState, presetFor, saveState, type SavedSelection } from './state';
 
@@ -184,19 +184,19 @@ map.on('load', () => {
   map.addSource('known', { type: 'geojson', data: knownGeoJSON() as never });
   map.addSource('known-points', { type: 'geojson', data: knownPointGeoJSON() as never });
 
-  // Gradient is magnitude, so one hue with monotone lightness — validated with
-  // the dataviz skill's validateOrdinal (monotone L, adjacent dL >= 0.06, hue
-  // spread 29 deg). Anchored dark-end-low because the map surface is dark: steep
-  // water brightens rather than recedes. Contrast against any basemap comes from
-  // the casing beneath, not from the ramp.
-  const GRADIENT_RAMP = [
-    'interpolate', ['linear'], ['get', 'gradient'],
-    0.05, '#8a4a12',
-    0.12, '#c26a1c',
-    0.20, '#e8912b',
-    0.30, '#ffb54d',
-    0.45, '#ffdc94',
+  // One hue with monotone lightness: better-ranked water brightens. Contrast
+  // against any basemap comes from the casing beneath, not from the ramp.
+  const RANK_RAMP = [
+    'interpolate', ['linear'], ['get', 'rank'],
+    0.005, '#ffdc94',
+    0.02, '#ffb54d',
+    0.05, '#e8912b',
+    0.10, '#c26a1c',
+    0.25, '#8a4a12',
   ];
+  const BEST_FIRST = ['-', ['get', 'rank']] as never; // sort key: best drawn last
+  const dotRadius = (scale: number) => ['case', ['<=', ['get', 'rank'], 0.01], 1.6 * scale,
+    ['<=', ['get', 'rank'], 0.03], 1.2 * scale, 0.8 * scale];
   const ROUND = { 'line-cap': 'round' as const, 'line-join': 'round' as const };
   // Lines take over from dots by zoom 11.5, then thin out again close in so the
   // channel on the basemap shows through them.
@@ -232,10 +232,10 @@ map.on('load', () => {
     id: 'reaches',
     type: 'line',
     source: 'reaches',
-    layout: ROUND,
+    layout: { ...ROUND, 'line-sort-key': BEST_FIRST },
     paint: {
       'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 15, 6],
-      'line-color': GRADIENT_RAMP as never,
+      'line-color': RANK_RAMP as never,
       'line-opacity': fade(1, 0.35),
     },
   });
@@ -243,9 +243,10 @@ map.on('load', () => {
     id: 'reach-dots',
     type: 'circle',
     source: 'reach-points',
+    layout: { 'circle-sort-key': BEST_FIRST },
     paint: {
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 11, 5.5],
-      'circle-color': GRADIENT_RAMP as never,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, dotRadius(2.5), 11, dotRadius(5.5)] as never,
+      'circle-color': RANK_RAMP as never,
       'circle-stroke-color': '#12181d',
       'circle-stroke-width': 1,
       'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.9, 11.5, 0],
@@ -511,14 +512,19 @@ function renderResults(keepPlace = false) {
   let list = results;
   // Proximity is deliberately reversible and never suppresses a non-dud
   // Canyon Log descent: a real canyon can sit immediately below a reservoir.
-  const hideDam = (c: Candidate) => c.dam
-    && !(knownByChain.get(c.chain) ?? []).some((k) => c.i <= k.j && c.j >= k.i);
+  const descended = (c: Candidate) =>
+    (knownByChain.get(c.chain) ?? []).some((k) => c.i <= k.j && c.j >= k.i);
+  const hideDam = (c: Candidate) => c.dam && !descended(c);
   const damsHidden = el<HTMLInputElement>('hideDams').checked
     ? list.filter(hideDam).length : 0;
   if (damsHidden) list = list.filter((c) => !hideDam(c));
+  const hideSingle = (c: Candidate) => isSingleDrop(c) && !descended(c);
+  const singlesHidden = el<HTMLInputElement>('hideSingle').checked
+    ? list.filter(hideSingle).length : 0;
+  if (singlesHidden) list = list.filter((c) => !hideSingle(c));
   // Grouped over everything the filters reach, not the part on screen, and
   // cached so panning with "limit to map view" does not regroup it all.
-  const cacheKey = `${q.sort}:${damsHidden}`;
+  const cacheKey = `${q.sort}:${damsHidden}:${singlesHidden}`;
   if (scored.results !== results || scored.key !== cacheKey) {
     const sorted = [...list].sort((a, b) => b[q.sort] - a[q.sort]);
     const all = buildGroups(sorted, q.sort);
@@ -555,6 +561,7 @@ function renderResults(keepPlace = false) {
     `${view.length.toLocaleString()} sections on ` +
     `${groups.length.toLocaleString()} watercourses` +
     (damsHidden ? ` · ${damsHidden.toLocaleString()} at large dams hidden` : '') +
+    (singlesHidden ? ` · ${singlesHidden.toLocaleString()} single drops hidden` : '') +
     (worthwhile.length ? ` · <span class="known-hit">catches ${hit}/${worthwhile.length} ` +
       `logged descents</span>` : '') +
     (stale.length ? ` · <span class="trunc">ignoring ${esc(stale.join(', '))}: ` +
@@ -611,14 +618,15 @@ function renderRow(row: Row, i: number): HTMLLIElement {
   const { group, cand } = row;
 
   const rank = (c: Candidate) =>
-    (scoreModel ? `<span class="promise">${rankText(c.rank)}</span> · ` : '');
+    (scoreModel ? `<span class="promise" title="${rankText(c.rank)} of all sections">` +
+      `${placeText(c)}</span> · ` : '');
   const facts = (c: Candidate) =>
     `${c.drop.toFixed(0)} m over ${c.length.toFixed(0)} m · ${fmtArea(c.drain)} draining`;
   if (cand) {
     li.className = 'reach';
     li.innerHTML = `
       <span class="name">${cand.drop.toFixed(0)} m over ${cand.length.toFixed(0)} m</span>
-      <span class="grad">${(cand.gradient * 100).toFixed(0)}%</span>
+      <span class="grad">${(cand.gradient * 100).toFixed(0)}%${ZOOM_BUTTON}</span>
       <span class="meta">${rank(cand)}${fmtArea(cand.drain)} draining ·
         top ${cand.top.toFixed(0)} m<br>${badgesHtml(badges(cand, scoreModel))}</span>`;
   } else {
@@ -628,7 +636,7 @@ function renderRow(row: Row, i: number): HTMLLIElement {
     li.innerHTML = `
       <span class="name">${multi ? `<span class="chev">${expanded.has(group.key)
         ? '▾' : '▸'}</span> ` : ''}${group.name}</span>
-      <span class="grad">${(group.best.gradient * 100).toFixed(0)}%</span>
+      <span class="grad">${(group.best.gradient * 100).toFixed(0)}%${ZOOM_BUTTON}</span>
       <span class="meta">${rank(group.best)}${loggedTag(group)}${multi
         ? `best of ${n} sections: ` : ''}${facts(group.best)}<br>${
         badgesHtml(badges(group.best, scoreModel))}</span>`;
@@ -643,12 +651,32 @@ function renderRow(row: Row, i: number): HTMLLIElement {
       return;
     }
     select(i);
+    if ((e.target as HTMLElement).closest('button.zoom')) {
+      zoomTo(cand ? [cand.coords] : group.members.map((c) => c.coords));
+    }
   };
   return li;
 }
 
+const ZOOM_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+  <circle cx="6.5" cy="6.5" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  <path d="M10 10l4.2 4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+</svg>`;
+const ZOOM_BUTTON =
+  `<button class="zoom" type="button" aria-label="Zoom to this" title="Zoom to this">${ZOOM_ICON}</button>`;
+
+function zoomTo(lines: [number, number][][]) {
+  const flat = lines.flat();
+  const lons = flat.map((p) => p[0]);
+  const lats = flat.map((p) => p[1]);
+  map.fitBounds(
+    [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+    { padding: 120, maxZoom: 15, duration: 600 },
+  );
+}
+
 function drawReaches(list: Candidate[]) {
-  const props = (c: Candidate) => ({ rid: candId(c), gradient: c.gradient, name: c.name });
+  const props = (c: Candidate) => ({ rid: candId(c), rank: c.rank, name: c.name });
   (map.getSource('reaches') as GeoJSONSource | undefined)?.setData({
     type: 'FeatureCollection',
     features: list.map((c) => ({
@@ -847,20 +875,11 @@ function showDetail(info: Detail) {
   (map.getSource('picked-highlight') as GeoJSONSource | undefined)
     ?.setData(selectedHighlight as never);
 
-  const lons = flat.map((p) => p[0]);
-  const lats = flat.map((p) => p[1]);
-
-  const lat = lats[0];
-  const lon = lons[0];
+  const [lon, lat] = flat[0];
   const d = el('detail');
   d.hidden = false;
   d.innerHTML = `
-    <button class="zoom" aria-label="Zoom to feature" title="Zoom to feature">
-      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-        <circle cx="6.5" cy="6.5" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        <path d="M10 10l4.2 4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-      </svg>
-    </button>
+    <button class="zoom" aria-label="Zoom to feature" title="Zoom to feature">${ZOOM_ICON}</button>
     <button class="close" aria-label="Close" title="Close">×</button>
     <h2>${info.title}</h2>
     ${info.context ? `<div class="stats context">${info.context}</div>` : ''}
@@ -877,15 +896,7 @@ function showDetail(info: Detail) {
     </div>`;
   // Selecting never moves the map — it is jarring when the click came from the
   // map itself — so fitting the view to the feature is the button's job.
-  d.querySelector<HTMLButtonElement>('button.zoom')!.onclick = () => {
-    map.fitBounds(
-      [
-        [Math.min(...lons), Math.min(...lats)],
-        [Math.max(...lons), Math.max(...lats)],
-      ],
-      { padding: 120, maxZoom: 15, duration: 600 },
-    );
-  };
+  d.querySelector<HTMLButtonElement>('button.zoom')!.onclick = () => zoomTo(info.coords);
   d.querySelector<HTMLButtonElement>('button.close')!.onclick = () => {
     d.hidden = true;
     selected = -1;
@@ -935,7 +946,7 @@ function drawProfile(points: { d: number; z: number; inside: boolean }[]) {
 /** The filter panel, by element id. Checkboxes save as 'true'/'false'. */
 const FILTER_IDS = [
   'minGrad', 'maxGrad', 'minLen', 'maxLen', 'minDrop', 'minDrain', 'maxDrain',
-  'minConf', 'minAlt', 'topShare', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'showKnown', 'showLidar', 'basemap',
+  'minConf', 'minAlt', 'topShare', 'sort', 'viewOnly', 'hideLogged', 'hideDams', 'hideSingle', 'showKnown', 'showLidar', 'basemap',
 ];
 
 function saveFilters() {
@@ -1009,6 +1020,7 @@ el('topShare').addEventListener('change', () => {
 el('viewOnly').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('hideLogged').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('hideDams').addEventListener('change', () => { saveFilters(); renderResults(); });
+el('hideSingle').addEventListener('change', () => { saveFilters(); renderResults(); });
 el('showKnown').addEventListener('change', (e) => {
   saveFilters();
   const on = (e.target as HTMLInputElement).checked ? 'visible' : 'none';

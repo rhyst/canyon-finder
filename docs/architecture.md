@@ -161,14 +161,14 @@ of the logged descents.
 
 | preset | filter | logged caught | sections |
 | --- | --- | --- | --- |
-| Calibrated shortlist | top 10% | 138/179 | 2,612 |
-| Wide net — prospecting | everything | 160/179 | 26,392 |
-| Top ranked | top 2% | 82/179 | 510 |
-| Big water | ≥15 km² | 26/179 | 477 |
-| Tight gorge | confinement ≥20 m | 58/179 | 2,325 |
-| Waterfall hunting | ≥20%, ≤500 m | 11/179 | 1,436 |
+| Shortlist | top 10% | 142/179 | 2,577 |
+| Everything | none | 160/179 | 26,392 |
 | Steep small burns | ≥15%, ≤5 km² | 42/179 | 4,677 |
-| Long descents | ≥1000 m | 90/179 | 5,548 |
+| Big water | ≥15 km² | 26/179 | 477 |
+
+**Hide single drops** drops sections with 70% or more of their fall inside one 100 m
+stretch — a lone waterfall, a cliff or a dam wall — unless a logged descent sits on them.
+286 of the top 10% are like this, against 5 of the 125 rated canyons.
 
 **Hide logged** drops watercourses a Canyon Log entry sits on — an entry whose measured
 window overlaps one of its sections, with a 250 m proximity fallback for entries that
@@ -197,9 +197,11 @@ only a 0-star or unrated entry are left out. Features are chosen by forward sele
 | step | feature | out-of-fold AUC |
 | --- | --- | --- |
 | 1 | maximum confinement (≤60 m) | 0.860 |
-| 2 | drainage area (log, ≤50 km²) | 0.903 |
-| 3 | total drop (log) | 0.942 |
-| 4 | steepest 100 m | 0.946 |
+| 2 | number of drops (log) | 0.906 |
+| 3 | drainage area (log, ≤10 km²) | 0.946 |
+| 4 | steepest 100 m | 0.951 |
+
+A drop is a run of samples at 20% or more falling at least 8 m.
 
 **The score is shown as a rank, with what a rank is worth.** A calibrated probability is
 useless to read at a 0.5% base rate, so the app shows where a section sits among all of
@@ -207,23 +209,23 @@ them — "top 3%" — and the capture curve says what that means. Out of fold:
 
 | top share of sections | rated canyons it holds |
 | --- | --- |
-| 1% | 35% |
-| 2% | 50% |
-| 5% | 76% |
+| 1% | 37% |
+| 2% | 49% |
+| 5% | 72% |
 | 10% | 86% |
-| 25% | 95% |
+| 25% | 98% |
 
 **It transfers.** Fitted on Scotland alone it scores AUC 0.952 on England and Wales;
-fitted on England and Wales, 0.933 on Scotland.
+fitted on England and Wales, 0.951 on Scotland.
 
 **It finds canyons; it does not grade them.** Median rank by Canyon Log rating runs 0★ top
-5%, 1★ top 3%, 2★ top 2%, 3★ and 4★ top 1% — ordered, but the 0-star reports sit in the
+5%, 1★ and 2★ top 3%, 3★ and 4★ top 1% — ordered, but the 0-star reports sit in the
 top 5% with everything else people bothered to walk to. No measurement here separates a
 good descent from a dull one.
 
 **Tags say why.** `score.json` carries the rated canyons' medians, and a section shows a
-tag where it reaches one: steep (15% overall), big drop (188 m), falls (steepest 100 m at
-34%), confined (16 m). Water is tagged against the range holding the middle 80% of rated
+tag where it reaches one: steep (15% overall), big drop (188 m), N drops (3 or more), confined (16 m). A section
+with most of its fall in one 100 m stretch is tagged single drop instead. Water is tagged against the range holding the middle 80% of rated
 canyons, 0.4–33 km², as good, little or big. A section also says whether it was measured
 on LiDAR or the 50 m model.
 

@@ -39,6 +39,8 @@ CANDIDATES: list[tuple[str, dict]] = [
     ("confine", {"cap": 60.0}),
     ("confineMax", {"cap": 60.0}),
     ("top", {"cap": 900.0}),
+    ("drops", {"log1p": True}),
+    ("single", {}),
 ]
 FOLDS = 5
 GOOD = 1  # stars: 0 is "not worth it", anything rated above is a real canyon
@@ -208,7 +210,7 @@ def main() -> None:
         "gradient": round(med("gradient"), 3),
         "drop": round(med("drop")),
         "confine": round(med("confine")),
-        "steepest": round(med("steepest"), 2),
+        "drops": round(med("drops")),
         "water": [round(float(v), 1) for v in
                   np.percentile([r["drain"] for r in pos], [10, 90])],
     }

@@ -16,13 +16,9 @@ const BASE = { minGrad: 5, maxGrad: 100, minLen: 50, maxLen: 5000, minDrop: 0,
 export const PRESETS: Record<string, Record<string, number | string>> = {
   calibrated: { ...BASE, topShare: 10 },
   wide: { ...BASE },
-  promising: { ...BASE, topShare: 2 },
   bigwater: { ...BASE, minDrain: 15 },
-  gorge: { ...BASE, minConf: 20, sort: 'confine' },
-  falls: { ...BASE, minGrad: 20, maxLen: 500, sort: 'steepest' },
   // Steep burns the ranking underrates: little water is little water.
   small: { ...BASE, minGrad: 15, maxDrain: 5, sort: 'drop' },
-  long: { ...BASE, minLen: 1000, sort: 'length' },
 };
 
 /** A preset as the query the app runs for it. The top of the length and

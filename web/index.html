@@ -21,14 +21,10 @@
         <label class="range preset">
           <span>Preset</span>
           <select id="preset">
-            <option value="calibrated">Calibrated shortlist</option>
-            <option value="wide">Wide net — prospecting</option>
-            <option value="promising">Top ranked</option>
-            <option value="bigwater">Big water</option>
-            <option value="gorge">Tight gorge</option>
-            <option value="falls">Waterfall hunting</option>
+            <option value="calibrated">Shortlist — top 10%</option>
+            <option value="wide">Everything</option>
             <option value="small">Steep small burns</option>
-            <option value="long">Long descents</option>
+            <option value="bigwater">Big water</option>
             <option value="custom">Custom</option>
           </select>
         </label>
@@ -125,6 +121,11 @@
           <label class="check"><input id="showLidar" type="checkbox" />
             <span class="swatch lidar"></span> LiDAR coverage</label>
         </div>
+
+        <div class="row">
+          <label class="check" title="Sections with most of their drop in one 100 m stretch: a lone waterfall, cliff or dam">
+            <input id="hideSingle" type="checkbox" checked /> Hide single drops</label>
+        </div>
       </section>
 
       <footer>
@@ -146,11 +147,11 @@
         from a dull one — only where to look.
       </p>
       <p>
-        Line colour is section gradient:
+        Line colour is rank:
         <span class="ramp"><i style="background:#8a4a12"></i><i style="background:#c26a1c"></i><i
           style="background:#e8912b"></i><i style="background:#ffb54d"></i><i
           style="background:#ffdc94"></i></span>
-        5% to 45%+. A white glow marks the selection.
+        top 25% to the very best, and better dots are larger. Blue marks the selection.
       </p>
       <p>
         Green is a graded or ungraded descent, grey is a "0 Stars" report — someone

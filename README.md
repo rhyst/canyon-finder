@@ -19,13 +19,14 @@ Everything in this project is pure slop! Use for entertainment purposes only!
 - Every river is split where its slope changes. The steep stretches are **sections**:
   fixed pieces of water, each measured and ranked once.
 - Each section is ranked against every section in Britain by how much it looks like
-  the canyons people have rated: **top 5%** holds about three quarters of them.
-- **Tags** say why a section ranks where it does — steep, big drop, falls, confined,
+  the canyons people have rated: **top 5%** holds about seven in ten of them.
+- **Tags** say why a section ranks where it does — steep, big drop, how many drops, confined,
   good water, LiDAR-measured — each shown when it matches a typical rated canyon.
 - The **sliders** filter sections by gradient, length, drop, drainage and so on.
-  **Presets** set everything at once: *Calibrated shortlist* (the default) is the top
-  10% and holds 138 of the 179 worthwhile logged descents; *Top ranked* is the top 2%.
-- Sections are coloured by steepness. The list groups them by watercourse, best first.
+  **Presets** set everything at once: *Shortlist* (the default) is the top 10% and
+  holds 142 of the 179 worthwhile logged descents.
+- **Hide single drops** removes sections whose drop is mostly one waterfall, cliff or dam.
+- Sections are coloured by rank. The list groups them by watercourse, best first.
 - **Dashed green lines** are canyons people have logged and rated; **grey** are ones
   they visited and reported as not worth it.
 - Click a section or canyon for its elevation profile, drainage and links to OS Maps and
@@ -81,12 +82,12 @@ Full technical detail, measurements and caveats: [docs/architecture.md](docs/arc
 ## The ranking
 
 One model scores every section, from four measurements: how tightly the valley closes
-in, how much land drains to it, how far it falls, and its steepest 100 m. The score is
+in, how many separate drops it has, how much land drains to it, and its steepest 100 m. The score is
 shown as a rank — "top 3%" — not a number on an invented scale.
 
 It was fitted on the sections holding a canyon rated one star or more on Canyon Log.
-Tested on canyons it had not seen, the top 1% of sections hold 35% of them, the top 5%
-hold 76%, and the top 10% hold 86%. Fitted on Scotland alone it still finds the
+Tested on canyons it had not seen, the top 1% of sections hold 37% of them, the top 5%
+hold 72%, and the top 10% hold 86%. Fitted on Scotland alone it still finds the
 canyons of England and Wales, and the reverse.
 
 It says where canyons are, not how good they are: nothing measured here separates a

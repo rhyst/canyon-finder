@@ -43,7 +43,7 @@ export interface ScoreModel {
   capture: [number, number][];
   /** A badge shows when a section reaches the rated canyons' median. */
   badges: {
-    gradient: number; drop: number; confine: number; steepest: number;
+    gradient: number; drop: number; confine: number; drops: number;
     /** Drainage area range, km², holding the middle 80% of rated canyons. */
     water: [number, number];
   };
@@ -88,6 +88,9 @@ export interface Candidate {
   dam?: boolean; // overlaps a mapped dam or its immediate spillway
   score: number; // raw model score; higher is more canyon-like
   rank: number; // share of all sections scoring at least this well, 0-1
+  place: number; // 1 is the best section in Great Britain
+  drops: number; // distinct falls of FALL_DROP m or more
+  single: number; // share of the drop inside the steepest 100 m, 0-1
   top: number;
   bottom: number;
   dem: string;

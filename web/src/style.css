@@ -129,6 +129,12 @@ select {
 #results li:hover { background: var(--panel-2); }
 #results li[aria-selected="true"] { background: #223140; box-shadow: inset 3px 0 0 var(--accent); }
 #results .name { font-weight: 600; }
+#results .grad { display: flex; align-items: center; gap: 6px; }
+#results button.zoom {
+  background: none; border: 0; padding: 4px; color: var(--muted); cursor: pointer;
+  display: flex; margin: -4px -6px -4px 0;
+}
+#results button.zoom:hover { color: var(--accent); }
 #results .grad { color: var(--hot); font-variant-numeric: tabular-nums; font-weight: 600; }
 #results .meta { grid-column: 1 / -1; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 
@@ -157,7 +163,7 @@ button.link {
 #detail {
   position: absolute;
   right: 12px;
-  bottom: 12px;
+  bottom: 34px; /* clear of the map attribution */
   width: min(380px, calc(100% - 24px));
   background: rgba(16, 22, 28, 0.94);
   border: 1px solid var(--line);
@@ -192,7 +198,7 @@ button.link {
   border-radius: 4px; border: 1px solid var(--line);
 }
 #detail .visit-links { margin-top: 6px; font-size: 12px; }
-#detail .links { display: flex; gap: 10px; margin-top: 8px; font-size: 12px; }
+#detail .links { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; font-size: 12px; }
 #detail a { color: var(--accent); }
 #detail button {
   position: absolute; top: 8px;
